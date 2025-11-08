@@ -1,0 +1,23 @@
+{
+  "name": "shopify-monitor-v2",
+  "version": "1.0.0",
+  "description": "Shopify product and price monitoring system",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test",
+    "test:unit": "node --test test/parser.test.js",
+    "test:integration": "node --test test/fetcher.test.js test/database.test.js",
+    "test:e2e": "node --test test/poller.test.js"
+  },
+  "keywords": ["shopify", "monitor", "price-tracking"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "mongodb": "^6.3.0"
+  }
+}

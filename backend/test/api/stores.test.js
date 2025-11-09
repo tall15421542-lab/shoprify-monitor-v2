@@ -245,6 +245,48 @@ describe('Store Management Endpoints', () => {
       assert.strictEqual(data.count, 1);
       assert.strictEqual(data.stores[0].product_count, 3);
     });
+
+    it('should include inactive stores with active flag false', async () => {
+      // Create two stores
+      const store1Response = await fetch(`${baseUrl}/stores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_url: 'https://active-store.myshopify.com',
+          store_name: 'Active Store'
+        })
+      });
+      const store1Data = await store1Response.json();
+
+      const store2Response = await fetch(`${baseUrl}/stores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_url: 'https://inactive-store.myshopify.com',
+          store_name: 'Inactive Store'
+        })
+      });
+      const store2Data = await store2Response.json();
+
+      // Deactivate second store
+      const deleteResponse = await fetch(`${baseUrl}/stores/${store2Data.store._id}`, {
+        method: 'DELETE'
+      });
+
+      assert.strictEqual(deleteResponse.status, 200);
+
+      const response = await fetch(`${baseUrl}/stores`);
+      const data = await response.json();
+
+      assert.strictEqual(response.status, 200);
+      assert.strictEqual(data.count, 2);
+      const activeStore = data.stores.find(store => store._id === store1Data.store._id);
+      const inactiveStore = data.stores.find(store => store._id === store2Data.store._id);
+      assert.ok(activeStore);
+      assert.strictEqual(activeStore.active, true);
+      assert.ok(inactiveStore);
+      assert.strictEqual(inactiveStore.active, false);
+    });
   });
 
   describe('GET /stores/:storeId', () => {
@@ -287,6 +329,132 @@ describe('Store Management Endpoints', () => {
 
     it('should return 400 for invalid store ID format', async () => {
       const response = await fetch(`${baseUrl}/stores/invalid-id`);
+      const data = await response.json();
+
+      assert.strictEqual(response.status, 400);
+      assert.ok(data.error.includes('Invalid'));
+    });
+
+    it('should return inactive store by ID', async () => {
+      const addResponse = await fetch(`${baseUrl}/stores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_url: 'https://to-be-inactive.myshopify.com',
+          store_name: 'Inactive Soon Store'
+        })
+      });
+      const addData = await addResponse.json();
+
+      const deleteResponse = await fetch(`${baseUrl}/stores/${addData.store._id}`, {
+        method: 'DELETE'
+      });
+      assert.strictEqual(deleteResponse.status, 200);
+
+      const response = await fetch(`${baseUrl}/stores/${addData.store._id}`);
+      const data = await response.json();
+
+      assert.strictEqual(response.status, 200);
+      assert.ok(data.store);
+      assert.strictEqual(data.store.active, false);
+    });
+  });
+
+  describe('DELETE /stores/:storeId', () => {
+    it('should mark store inactive', async () => {
+      const addResponse = await fetch(`${baseUrl}/stores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_url: 'https://delete-store.myshopify.com',
+          store_name: 'Delete Store'
+        })
+      });
+      const addData = await addResponse.json();
+      const storeId = addData.store._id;
+
+      const response = await fetch(`${baseUrl}/stores/${storeId}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      assert.strictEqual(response.status, 200);
+      assert.ok(data.message.includes('inactive'));
+      assert.strictEqual(data.store.active, false);
+      assert.ok(data.store.deactivated_at);
+
+      const storesResponse = await fetch(`${baseUrl}/stores`);
+      const storesData = await storesResponse.json();
+
+      assert.strictEqual(storesResponse.status, 200);
+      const updatedStore = storesData.stores.find(store => store._id === storeId);
+      assert.ok(updatedStore);
+      assert.strictEqual(updatedStore.active, false);
+    });
+
+    it('should return 404 when store does not exist or already inactive', async () => {
+      const response = await fetch(`${baseUrl}/stores/507f1f77bcf86cd799439011`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      assert.strictEqual(response.status, 404);
+      assert.ok(data.error.includes('not found'));
+    });
+
+    it('should return 400 for invalid store ID format', async () => {
+      const response = await fetch(`${baseUrl}/stores/invalid-id`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      assert.strictEqual(response.status, 400);
+      assert.ok(data.error.includes('Invalid'));
+    });
+  });
+
+  describe('POST /stores/:storeId/activate', () => {
+    it('should reactivate an inactive store', async () => {
+      const addResponse = await fetch(`${baseUrl}/stores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_url: 'https://reactivate-store.myshopify.com',
+          store_name: 'Reactivate Store'
+        })
+      });
+      const addData = await addResponse.json();
+
+      const deleteResponse = await fetch(`${baseUrl}/stores/${addData.store._id}`, {
+        method: 'DELETE'
+      });
+      assert.strictEqual(deleteResponse.status, 200);
+
+      const activateResponse = await fetch(`${baseUrl}/stores/${addData.store._id}/activate`, {
+        method: 'POST'
+      });
+      const activateData = await activateResponse.json();
+
+      assert.strictEqual(activateResponse.status, 200);
+      assert.ok(activateData.message.includes('reactivated'));
+      assert.strictEqual(activateData.store.active, true);
+      assert.ok(activateData.store.reactivated_at);
+    });
+
+    it('should return 404 when store does not exist or already active', async () => {
+      const response = await fetch(`${baseUrl}/stores/507f1f77bcf86cd799439011/activate`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+
+      assert.strictEqual(response.status, 404);
+      assert.ok(data.error.includes('not found'));
+    });
+
+    it('should return 400 for invalid store ID format', async () => {
+      const response = await fetch(`${baseUrl}/stores/invalid-id/activate`, {
+        method: 'POST'
+      });
       const data = await response.json();
 
       assert.strictEqual(response.status, 400);

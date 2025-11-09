@@ -30,8 +30,8 @@ export const getStores = async (): Promise<Store[]> => {
     _id: store._id,
     name: store.store_name,
     url: store.store_url,
-    status: store.active ? 'active' : 'paused',
-    pollingInterval: store.polling_interval || 60,
+    status: store.active ? 'active' : 'inactive',
+    pollingInterval: store.poll_interval ?? store.polling_interval ?? 60,
     lastFetch: store.last_polled_at ? new Date(store.last_polled_at) : undefined,
     productCount: store.product_count,
   }));
@@ -53,8 +53,8 @@ export const addStore = async (data: AddStoreData): Promise<Store> => {
     _id: store._id,
     name: store.store_name,
     url: store.store_url,
-    status: store.active ? 'active' : 'paused',
-    pollingInterval: store.poll_interval || 60,
+    status: store.active ? 'active' : 'inactive',
+    pollingInterval: store.poll_interval ?? store.polling_interval ?? 60,
     lastFetch: store.last_polled_at ? new Date(store.last_polled_at) : undefined,
     productCount: store.product_count,
   };
@@ -68,11 +68,21 @@ export const getStore = async (storeId: string): Promise<Store> => {
     _id: store._id,
     name: store.store_name,
     url: store.store_url,
-    status: store.active ? 'active' : 'paused',
-    pollingInterval: store.polling_interval || 60,
+    status: store.active ? 'active' : 'inactive',
+    pollingInterval: store.poll_interval ?? store.polling_interval ?? 60,
     lastFetch: store.last_polled_at ? new Date(store.last_polled_at) : undefined,
     productCount: store.product_count,
   };
+};
+
+export const deactivateStore = async (storeId: string): Promise<{ message: string; store: any }> => {
+  const response = await api.delete<{ message: string; store: any }>(`/stores/${storeId}`);
+  return response.data;
+};
+
+export const activateStore = async (storeId: string): Promise<{ message: string; store: any }> => {
+  const response = await api.post<{ message: string; store: any }>(`/stores/${storeId}/activate`);
+  return response.data;
 };
 
 // Tag APIs

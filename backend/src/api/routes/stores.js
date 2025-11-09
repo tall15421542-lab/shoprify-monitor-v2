@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { addStore, getAllStores, getStoreById } from '../controllers/stores.js';
+import { addStore, getAllStores, getStoreById, deactivateStore, reactivateStore } from '../controllers/stores.js';
 import { getStoreTagsHandler } from '../controllers/tags.js';
 import { getStoreProductTypesHandler } from '../controllers/product-types.js';
 
@@ -19,6 +19,12 @@ router.get('/:storeId/product-types', getStoreProductTypesHandler);
 
 // GET /stores/:storeId - Get single store
 router.get('/:storeId', getStoreById);
+
+// DELETE /stores/:storeId - Mark store inactive
+router.delete('/:storeId', deactivateStore);
+
+// POST /stores/:storeId/activate - Reactivate store
+router.post('/:storeId/activate', reactivateStore);
 
 export default router;
 

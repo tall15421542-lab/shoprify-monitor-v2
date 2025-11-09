@@ -8,6 +8,7 @@ import ProductFilters, { PriceSortOption, PriceChangeFilter } from '../component
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
 import EmptyState from '../components/common/EmptyState';
+import { formatPollingInterval } from '../utils/time';
 
 function ProductsPage() {
   const { storeId } = useParams<{ storeId: string }>();
@@ -18,6 +19,23 @@ function ProductsPage() {
   const [selectedProductType, setSelectedProductType] = useState<string>('');
   const [priceChangeFilter, setPriceChangeFilter] = useState<PriceChangeFilter>('all');
   const [priceSort, setPriceSort] = useState<PriceSortOption>('none');
+
+  const pollingIntervalText = useMemo(
+    () => formatPollingInterval(store?.pollingInterval),
+    [store?.pollingInterval]
+  );
+
+  const lastUpdatedText = useMemo(() => {
+    if (!store?.lastFetch) {
+      return null;
+    }
+
+    try {
+      return new Date(store.lastFetch).toLocaleString();
+    } catch {
+      return null;
+    }
+  }, [store?.lastFetch]);
   
   // Extract unique product types from products
   const productTypes = useMemo(() => {
@@ -100,9 +118,16 @@ function ProductsPage() {
           {store?.name || 'Store'} Products
         </h1>
         {store && (
-          <p className="text-gray-600">
-            {products?.length || 0} products • Updates every {store.pollingInterval} hours
-          </p>
+          <div className="text-gray-600 space-y-1 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+            <span>
+              {products?.length || 0} products • Updates every {pollingIntervalText}
+            </span>
+            {lastUpdatedText && (
+              <span className="text-gray-500">
+                Last updated {lastUpdatedText}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

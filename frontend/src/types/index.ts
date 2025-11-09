@@ -3,7 +3,7 @@ export interface Store {
   _id: string;
   name: string;
   url: string;
-  status: 'active' | 'paused' | 'error';
+  status: 'active' | 'inactive' | 'error';
   pollingInterval: number;
   lastFetch?: Date;
   productCount?: number;

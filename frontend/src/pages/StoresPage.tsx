@@ -19,6 +19,9 @@ function StoresPage() {
   const pollAttemptsRef = useRef(0);
   const MAX_POLL_ATTEMPTS = 20; // Poll for ~1 minute (3 seconds * 20)
 
+  const activeStores = stores?.filter((store) => store.status === 'active') ?? [];
+  const inactiveStores = stores?.filter((store) => store.status !== 'active') ?? [];
+
   const handleUpdateAll = async () => {
     try {
       setIsUpdating(true);
@@ -140,7 +143,7 @@ function StoresPage() {
         <div className="flex gap-3">
           <button
             onClick={handleUpdateAll}
-            disabled={isUpdating || !stores || stores.length === 0}
+            disabled={isUpdating || activeStores.length === 0}
             className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw size={20} className={isUpdating ? 'animate-spin' : ''} />
@@ -157,7 +160,31 @@ function StoresPage() {
       </div>
 
       {stores && stores.length > 0 ? (
-        <StoreList stores={stores} onStoreUpdate={refetch} />
+        <div className="space-y-10">
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Active Stores</h2>
+              <span className="text-sm text-gray-500">{activeStores.length}</span>
+            </div>
+            {activeStores.length > 0 ? (
+              <StoreList stores={activeStores} onStoreUpdate={refetch} />
+            ) : (
+              <div className="card text-gray-600 text-sm">
+                No active stores. Activate a store to resume monitoring.
+              </div>
+            )}
+          </section>
+
+          {inactiveStores.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Inactive Stores</h2>
+                <span className="text-sm text-gray-500">{inactiveStores.length}</span>
+              </div>
+              <StoreList stores={inactiveStores} onStoreUpdate={refetch} />
+            </section>
+          )}
+        </div>
       ) : (
         <EmptyState
           icon={Store}

@@ -172,3 +172,108 @@ export async function getStoreById(req, res, next) {
   }
 }
 
+/**
+ * Mark a store inactive (soft delete)
+ * DELETE /stores/:storeId
+ */
+export async function deactivateStore(req, res, next) {
+  try {
+    const { storeId } = req.params;
+
+    if (!ObjectId.isValid(storeId)) {
+      return res.status(400).json({
+        error: 'Invalid store ID format'
+      });
+    }
+
+    const db = getDb();
+    const stores = db.collection('stores');
+
+    const updatedStore = await stores.findOneAndUpdate(
+      { _id: new ObjectId(storeId), active: true },
+      {
+        $set: {
+          active: false,
+          deactivated_at: new Date()
+        }
+      },
+      {
+        returnDocument: 'after'
+      }
+    );
+
+    if (!updatedStore) {
+      return res.status(404).json({
+        error: 'Store not found or already inactive'
+      });
+    }
+
+    res.json({
+      message: 'Store marked inactive successfully',
+      store: updatedStore
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Reactivate a store and trigger fresh data pulls
+ * POST /stores/:storeId/activate
+ */
+export async function reactivateStore(req, res, next) {
+  try {
+    const { storeId } = req.params;
+
+    if (!ObjectId.isValid(storeId)) {
+      return res.status(400).json({
+        error: 'Invalid store ID format'
+      });
+    }
+
+    const db = getDb();
+    const stores = db.collection('stores');
+
+    const updatedStore = await stores.findOneAndUpdate(
+      { _id: new ObjectId(storeId), active: false },
+      {
+        $set: {
+          active: true,
+          deactivated_at: null,
+          reactivated_at: new Date()
+        }
+      },
+      {
+        returnDocument: 'after'
+      }
+    );
+
+    if (!updatedStore) {
+      return res.status(404).json({
+        error: 'Store not found or already active'
+      });
+    }
+
+    setImmediate(async () => {
+      try {
+        console.log(`\n🚀 Triggering poll for reactivated store: ${updatedStore.store_name}`);
+        const pollResult = await triggerStorePoll(storeId);
+        console.log(`✓ Reactivated store poll triggered:`, pollResult);
+
+        console.log(`📊 Triggering aggregation for reactivated store: ${updatedStore.store_name}`);
+        const aggregationResult = await triggerCurrentHourAggregation();
+        console.log(`✓ Reactivated store aggregation triggered:`, aggregationResult);
+      } catch (error) {
+        console.error(`❌ Error during reactivation tasks for store ${updatedStore.store_name}:`, error.message);
+      }
+    });
+
+    res.json({
+      message: 'Store reactivated successfully',
+      store: updatedStore
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

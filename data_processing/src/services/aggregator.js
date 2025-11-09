@@ -1,5 +1,13 @@
 import { getDb } from '../database/connection.js';
 
+async function getActiveStoreIds(db) {
+  const storesCollection = db.collection('stores');
+  const stores = await storesCollection
+    .find({ active: true }, { projection: { _id: 1 } })
+    .toArray();
+  return stores.map((store) => store._id);
+}
+
 /**
  * Aggregate price snapshots into hourly store averages
  * @param {Date} windowStart - Start of the hour window
@@ -10,6 +18,12 @@ export async function aggregateStoreAverages(windowStart, windowEnd) {
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyStoreAvgCollection = db.collection('hourly_store_avg');
 
+  const activeStoreIds = await getActiveStoreIds(db);
+  if (activeStoreIds.length === 0) {
+    console.log('No active stores found for store average aggregation.');
+    return 0;
+  }
+
   // Aggregate price snapshots by store_id
   const pipeline = [
     {
@@ -17,7 +31,8 @@ export async function aggregateStoreAverages(windowStart, windowEnd) {
         timestamp: {
           $gte: windowStart,
           $lt: windowEnd
-        }
+        },
+        'metadata.store_id': { $in: activeStoreIds }
       }
     },
     {
@@ -80,6 +95,12 @@ export async function aggregateTagAverages(windowStart, windowEnd) {
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyTagAvgCollection = db.collection('hourly_tag_avg');
 
+  const activeStoreIds = await getActiveStoreIds(db);
+  if (activeStoreIds.length === 0) {
+    console.log('No active stores found for tag average aggregation.');
+    return 0;
+  }
+
   // Aggregate price snapshots by tag
   const pipeline = [
     {
@@ -87,7 +108,8 @@ export async function aggregateTagAverages(windowStart, windowEnd) {
         timestamp: {
           $gte: windowStart,
           $lt: windowEnd
-        }
+        },
+        'metadata.store_id': { $in: activeStoreIds }
       }
     },
     {
@@ -153,6 +175,12 @@ export async function aggregateStoreTagAverages(windowStart, windowEnd) {
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyStoreTagAvgCollection = db.collection('hourly_store_tag_avg');
 
+  const activeStoreIds = await getActiveStoreIds(db);
+  if (activeStoreIds.length === 0) {
+    console.log('No active stores found for store-tag average aggregation.');
+    return 0;
+  }
+
   // Aggregate price snapshots by store_id + tag
   const pipeline = [
     {
@@ -160,7 +188,8 @@ export async function aggregateStoreTagAverages(windowStart, windowEnd) {
         timestamp: {
           $gte: windowStart,
           $lt: windowEnd
-        }
+        },
+        'metadata.store_id': { $in: activeStoreIds }
       }
     },
     {
@@ -231,6 +260,12 @@ export async function aggregateProductTypeAverages(windowStart, windowEnd) {
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyProductTypeAvgCollection = db.collection('hourly_product_type_avg');
 
+  const activeStoreIds = await getActiveStoreIds(db);
+  if (activeStoreIds.length === 0) {
+    console.log('No active stores found for product type average aggregation.');
+    return 0;
+  }
+
   // Aggregate price snapshots by product_type
   const pipeline = [
     {
@@ -239,7 +274,8 @@ export async function aggregateProductTypeAverages(windowStart, windowEnd) {
           $gte: windowStart,
           $lt: windowEnd
         },
-        'metadata.product_type': { $exists: true, $ne: null }
+        'metadata.product_type': { $exists: true, $ne: null },
+        'metadata.store_id': { $in: activeStoreIds }
       }
     },
     {
@@ -305,6 +341,12 @@ export async function aggregateStoreProductTypeAverages(windowStart, windowEnd) 
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyStoreProductTypeAvgCollection = db.collection('hourly_store_product_type_avg');
 
+  const activeStoreIds = await getActiveStoreIds(db);
+  if (activeStoreIds.length === 0) {
+    console.log('No active stores found for store-product-type average aggregation.');
+    return 0;
+  }
+
   // Aggregate price snapshots by store_id + product_type
   const pipeline = [
     {
@@ -313,7 +355,8 @@ export async function aggregateStoreProductTypeAverages(windowStart, windowEnd) 
           $gte: windowStart,
           $lt: windowEnd
         },
-        'metadata.product_type': { $exists: true, $ne: null }
+        'metadata.product_type': { $exists: true, $ne: null },
+        'metadata.store_id': { $in: activeStoreIds }
       }
     },
     {

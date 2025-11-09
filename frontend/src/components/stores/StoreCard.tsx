@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Store, Package, Clock, AlertCircle, CheckCircle, Pause, RefreshCw } from 'lucide-react';
+import { Store, Package, Clock, RefreshCw, Power, PauseCircle, AlertCircle } from 'lucide-react';
 import type { Store as StoreType } from '../../types';
 import { useToast } from '../common/ToastContainer';
-import { updateStore } from '../../services/api';
+import { updateStore, deactivateStore, activateStore } from '../../services/api';
+import { formatPollingInterval } from '../../utils/time';
 
 interface StoreCardProps {
   store: StoreType;
@@ -14,30 +15,11 @@ function StoreCard({ store, onUpdate }: StoreCardProps) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeactivating, setIsDeactivating] = useState(false);
+  const [isEnabling, setIsEnabling] = useState(false);
 
-  const statusConfig = {
-    active: {
-      icon: CheckCircle,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100',
-      label: 'Active',
-    },
-    paused: {
-      icon: Pause,
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-100',
-      label: 'Paused',
-    },
-    error: {
-      icon: AlertCircle,
-      color: 'text-red-600',
-      bgColor: 'bg-red-100',
-      label: 'Error',
-    },
-  };
-
-  const status = statusConfig[store.status];
-  const StatusIcon = status.icon;
+  const isActive = store.status === 'active';
+  const isError = store.status === 'error';
 
   const handleClick = () => {
     navigate(`/stores/${store._id}/products`);
@@ -67,6 +49,53 @@ function StoreCard({ store, onUpdate }: StoreCardProps) {
     }
   };
 
+  const handleDeactivate = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const confirmed = window.confirm(`Deactivate ${store.name}? This will stop monitoring the store.`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsDeactivating(true);
+      await deactivateStore(store._id);
+      showToast('success', `${store.name} deactivated`);
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (err: any) {
+      console.error('Error deactivating store:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to deactivate store';
+      showToast('error', `Deactivate failed: ${errorMessage}`);
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
+  const handleEnable = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    try {
+      setIsEnabling(true);
+      await activateStore(store._id);
+      const result = await updateStore(store._id);
+      const productCount =
+        result.pollResult?.products_saved ??
+        result.pollResult?.total_products ??
+        0;
+      showToast('success', `${store.name} enabled and refreshed (${productCount} products)`);
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (err: any) {
+      console.error('Error enabling store:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to enable store';
+      showToast('error', `Enable failed: ${errorMessage}`);
+    } finally {
+      setIsEnabling(false);
+    }
+  };
+
   return (
     <div
       onClick={handleClick}
@@ -83,19 +112,44 @@ function StoreCard({ store, onUpdate }: StoreCardProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleUpdate}
-            disabled={isUpdating}
-            className="px-3 py-1 bg-primary-600 hover:bg-primary-700 text-white text-sm rounded-md flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Update store now"
-          >
-            <RefreshCw size={14} className={isUpdating ? 'animate-spin' : ''} />
-            {isUpdating ? 'Updating...' : 'Update'}
-          </button>
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${status.bgColor} ${status.color} flex items-center gap-1`}>
-            <StatusIcon size={14} />
-            {status.label}
-          </span>
+          {isActive ? (
+            <button
+              onClick={handleUpdate}
+              disabled={isUpdating || isDeactivating}
+              className="px-3 py-1 bg-primary-600 hover:bg-primary-700 text-white text-sm rounded-md flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Update store now"
+            >
+              <RefreshCw size={14} className={isUpdating ? 'animate-spin' : ''} />
+              {isUpdating ? 'Updating...' : 'Update'}
+            </button>
+          ) : (
+            <button
+              onClick={handleEnable}
+              disabled={isEnabling || isDeactivating}
+              className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-sm rounded-md flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Enable store"
+            >
+              <Power size={14} className={isEnabling ? 'animate-spin' : ''} />
+              {isEnabling ? 'Enabling...' : 'Enable'}
+            </button>
+          )}
+          {isActive && (
+            <button
+              onClick={handleDeactivate}
+              disabled={isDeactivating || isUpdating || isEnabling}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-md flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Deactivate store"
+            >
+              <PauseCircle size={14} className={isDeactivating ? 'animate-spin' : ''} />
+              {isDeactivating ? 'Deactivating...' : 'Deactivate'}
+            </button>
+          )}
+          {isError && (
+            <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-600 flex items-center gap-1">
+              <AlertCircle size={14} />
+              Error
+            </span>
+          )}
         </div>
       </div>
 
@@ -106,7 +160,7 @@ function StoreCard({ store, onUpdate }: StoreCardProps) {
         </div>
         <div className="flex items-center gap-2">
           <Clock size={16} />
-          <span>Every {store.pollingInterval}h</span>
+          <span>Every {formatPollingInterval(store.pollingInterval)}</span>
         </div>
       </div>
 

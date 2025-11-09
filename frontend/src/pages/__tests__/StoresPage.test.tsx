@@ -94,6 +94,31 @@ describe('StoresPage', () => {
     
     const updateButton = screen.getByRole('button', { name: /update all stores/i });
     expect(updateButton).not.toBeDisabled();
+    expect(screen.getByText('Active Stores')).toBeInTheDocument();
+  });
+
+  it('disables Update All button when only inactive stores exist', () => {
+    mockUseStores.mockReturnValue({
+      data: [
+        {
+          _id: '1',
+          name: 'Store 1',
+          url: 'store1.myshopify.com',
+          status: 'inactive' as const,
+          pollingInterval: 60,
+          productCount: 50,
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderStoresPage();
+
+    const updateButton = screen.getByRole('button', { name: /update all stores/i });
+    expect(updateButton).toBeDisabled();
+    expect(screen.getByText('Inactive Stores')).toBeInTheDocument();
   });
 
   it('updates all stores when Update All button is clicked', async () => {

@@ -107,6 +107,7 @@ function LineChart({ title, series, emptyMessage }: LineChartProps) {
             <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} tickFormatter={(value) => formatPrice(value)} />
             <Tooltip
               formatter={(value: number, name: string) => [formatPrice(value), name]}
+              itemSorter={(item) => (typeof item.value === 'number' ? -item.value : 0)}
               labelFormatter={(_, payload) => {
                 if (!payload || payload.length === 0) return '';
                 const rawDate = payload[0]?.payload?.rawDate;

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import StoreCard from './StoreCard';
 import type { Store } from '../../types';
@@ -15,6 +15,10 @@ const mockStore: Store = {
 };
 
 const mockNavigate = vi.fn();
+const mockShowToast = vi.fn();
+const mockDeactivateStore = vi.fn();
+const mockActivateStore = vi.fn();
+const mockUpdateStore = vi.fn();
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -24,7 +28,27 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+vi.mock('../common/ToastContainer', () => ({
+  useToast: () => ({
+    showToast: mockShowToast,
+  }),
+}));
+
+vi.mock('../../services/api', () => ({
+  updateStore: (...args: unknown[]) => mockUpdateStore(...(args as [string])),
+  deactivateStore: (...args: unknown[]) => mockDeactivateStore(...(args as [string])),
+  activateStore: (...args: unknown[]) => mockActivateStore(...(args as [string])),
+}));
+
 describe('StoreCard', () => {
+  beforeEach(() => {
+    mockNavigate.mockReset();
+    mockShowToast.mockReset();
+    mockDeactivateStore.mockReset();
+    mockActivateStore.mockReset();
+    mockUpdateStore.mockReset();
+  });
+
   it('displays store information', () => {
     render(
       <BrowserRouter>
@@ -35,31 +59,31 @@ describe('StoreCard', () => {
     expect(screen.getByText('Test Store')).toBeInTheDocument();
     expect(screen.getByText('test.myshopify.com')).toBeInTheDocument();
     expect(screen.getByText('50 products')).toBeInTheDocument();
-    expect(screen.getByText('Every 24h')).toBeInTheDocument();
+    expect(screen.getByText('Every 24 minutes')).toBeInTheDocument();
   });
 
-  it('displays active status correctly', () => {
+  it('does not render status badge for active store', () => {
     render(
       <BrowserRouter>
         <StoreCard store={mockStore} />
       </BrowserRouter>
     );
 
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.queryByText('Active')).not.toBeInTheDocument();
   });
 
-  it('displays paused status correctly', () => {
-    const pausedStore = { ...mockStore, status: 'paused' as const };
+  it('does not render status badge for inactive store', () => {
+    const inactiveStore = { ...mockStore, status: 'inactive' as const };
     render(
       <BrowserRouter>
-        <StoreCard store={pausedStore} />
+        <StoreCard store={inactiveStore} />
       </BrowserRouter>
     );
 
-    expect(screen.getByText('Paused')).toBeInTheDocument();
+    expect(screen.queryByText('Inactive')).not.toBeInTheDocument();
   });
 
-  it('displays error status correctly', () => {
+  it('renders error badge when status is error', () => {
     const errorStore = { ...mockStore, status: 'error' as const };
     render(
       <BrowserRouter>
@@ -102,6 +126,85 @@ describe('StoreCard', () => {
     );
 
     expect(screen.getByText('0 products')).toBeInTheDocument();
+  });
+
+  it('deactivates store after confirmation', async () => {
+    mockDeactivateStore.mockResolvedValue({ message: 'Store marked inactive successfully' });
+    const onUpdate = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(
+      <BrowserRouter>
+        <StoreCard store={mockStore} onUpdate={onUpdate} />
+      </BrowserRouter>
+    );
+
+    const deactivateButton = screen.getByRole('button', { name: /deactivate/i });
+    fireEvent.click(deactivateButton);
+
+    await waitFor(() => {
+      expect(mockDeactivateStore).toHaveBeenCalledWith('123');
+    });
+    expect(onUpdate).toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith('success', 'Test Store deactivated');
+
+    confirmSpy.mockRestore();
+  });
+
+  it('does not deactivate store when confirmation is cancelled', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(
+      <BrowserRouter>
+        <StoreCard store={mockStore} />
+      </BrowserRouter>
+    );
+
+    const deactivateButton = screen.getByRole('button', { name: /deactivate/i });
+    fireEvent.click(deactivateButton);
+
+    expect(mockDeactivateStore).not.toHaveBeenCalled();
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('enables inactive store', async () => {
+    mockActivateStore.mockResolvedValue({ message: 'Store reactivated successfully' });
+    mockUpdateStore.mockResolvedValue({
+      pollResult: { products_saved: 42 },
+      aggregationResult: { store_averages: 1, tag_averages: 1, store_tag_averages: 1 },
+    });
+    const inactiveStore = { ...mockStore, status: 'inactive' as const };
+    const onUpdate = vi.fn();
+
+    render(
+      <BrowserRouter>
+        <StoreCard store={inactiveStore} onUpdate={onUpdate} />
+      </BrowserRouter>
+    );
+
+    const enableButton = screen.getByRole('button', { name: /enable/i });
+    fireEvent.click(enableButton);
+
+    await waitFor(() => {
+      expect(mockActivateStore).toHaveBeenCalledWith('123');
+      expect(mockUpdateStore).toHaveBeenCalledWith('123');
+    });
+    expect(onUpdate).toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith('success', 'Test Store enabled and refreshed (42 products)');
+  });
+
+  it('does not show deactivate button for inactive store', () => {
+    const inactiveStore = { ...mockStore, status: 'inactive' as const };
+
+    render(
+      <BrowserRouter>
+        <StoreCard store={inactiveStore} />
+      </BrowserRouter>
+    );
+
+    expect(screen.queryByRole('button', { name: /deactivate/i })).not.toBeInTheDocument();
   });
 });
 

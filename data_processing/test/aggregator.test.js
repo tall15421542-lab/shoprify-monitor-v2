@@ -29,6 +29,7 @@ import {
 // Helper to clean up test data
 async function cleanupTestData() {
   const db = getDb();
+  await db.collection('stores').deleteMany({});
   await db.collection('price_snapshots').deleteMany({});
   await db.collection('hourly_store_avg').deleteMany({});
   await db.collection('hourly_tag_avg').deleteMany({});
@@ -37,9 +38,62 @@ async function cleanupTestData() {
   await db.collection('hourly_store_product_type_avg').deleteMany({});
 }
 
+async function ensureStoresForSnapshots(snapshots) {
+  const db = getDb();
+  const storesCollection = db.collection('stores');
+
+  const uniqueStores = new Map();
+  for (const snapshot of snapshots) {
+    const storeId = snapshot?.metadata?.store_id;
+    if (storeId) {
+      const stringId = storeId.toString();
+      if (!uniqueStores.has(stringId)) {
+        uniqueStores.set(stringId, storeId);
+      }
+    }
+  }
+
+  if (uniqueStores.size === 0) {
+    return;
+  }
+
+  const bulkOps = Array.from(uniqueStores.values()).map((storeId) => ({
+    updateOne: {
+      filter: { _id: storeId },
+      update: {
+        $setOnInsert: {
+          _id: storeId,
+          store_name: `Store ${storeId.toString().slice(-4)}`,
+          store_url: `https://${storeId.toString()}.example.com`,
+          active: true,
+          created_at: new Date(),
+          last_polled_at: null
+        }
+      },
+      upsert: true
+    }
+  }));
+
+  await storesCollection.bulkWrite(bulkOps, { ordered: false });
+}
+
+async function setStoreActiveStatus(storeId, isActive) {
+  const db = getDb();
+  await db.collection('stores').updateOne(
+    { _id: storeId },
+    {
+      $set: {
+        active: isActive,
+        deactivated_at: isActive ? null : new Date()
+      }
+    }
+  );
+}
+
 // Helper to insert test price snapshots
 async function insertPriceSnapshots(snapshots) {
   const db = getDb();
+  await ensureStoresForSnapshots(snapshots);
   await db.collection('price_snapshots').insertMany(snapshots);
 }
 
@@ -135,6 +189,42 @@ test('Aggregator Tests', async (t) => {
     
     const count = await aggregateStoreAverages(windowStart, windowEnd);
     assert.strictEqual(count, 2);
+  });
+
+  await t.test('skips inactive stores when aggregating store averages', async () => {
+    await cleanupTestData();
+
+    const activeStoreId = new ObjectId();
+    const inactiveStoreId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: activeStoreId, product_id: 1, variant_id: 1, tags: [] },
+        store_name: 'Active Store',
+        price: 10.0
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: inactiveStoreId, product_id: 2, variant_id: 2, tags: [] },
+        store_name: 'Inactive Store',
+        price: 20.0
+      }
+    ]);
+
+    await setStoreActiveStatus(inactiveStoreId, false);
+
+    const count = await aggregateStoreAverages(windowStart, windowEnd);
+    assert.strictEqual(count, 1);
+
+    const db = getDb();
+    const activeResult = await db.collection('hourly_store_avg').findOne({ store_id: activeStoreId });
+    const inactiveResult = await db.collection('hourly_store_avg').findOne({ store_id: inactiveStoreId });
+
+    assert.ok(activeResult);
+    assert.strictEqual(inactiveResult, null);
   });
   
   await t.test('calculates average price per store', async () => {
@@ -401,6 +491,41 @@ test('Aggregator Tests', async (t) => {
     
     assert.ok(result);
     assert.strictEqual(result.avg_price, 150.00); // (100 + 200) / 2
+  });
+
+  await t.test('skips tag aggregates for inactive stores', async () => {
+    await cleanupTestData();
+
+    const activeStoreId = new ObjectId();
+    const inactiveStoreId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: activeStoreId, product_id: 1, variant_id: 1, tags: ['electronics'] },
+        store_name: 'Active Store',
+        price: 100.0
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: inactiveStoreId, product_id: 2, variant_id: 2, tags: ['electronics'] },
+        store_name: 'Inactive Store',
+        price: 200.0
+      }
+    ]);
+
+    await setStoreActiveStatus(inactiveStoreId, false);
+
+    await aggregateTagAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_tag_avg').findOne({ tag: 'electronics' });
+
+    assert.ok(result);
+    assert.strictEqual(result.avg_price, 100.0);
+    assert.strictEqual(result.product_count, 1);
   });
   
   await t.test('calculates average price per tag', async () => {

@@ -2,23 +2,19 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useStores } from '../hooks/useStores';
-import { useTags } from '../hooks/useTags';
 import { useProductTypes } from '../hooks/useProductTypes';
-import { useAveragePriceByTag } from '../hooks/useAnalytics';
 import {
   getAveragePriceByStore,
   getAveragePriceByStoreAndProductType,
-  getAveragePriceByStoreAndTag,
   getAveragePriceByProductType,
   getStoreProductTypes,
-  getStoreTags,
 } from '../services/api';
 import DateRangePicker from '../components/charts/DateRangePicker';
 import ChartFilters from '../components/charts/ChartFilters';
 import LineChart from '../components/charts/LineChart';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
-import type { AveragePriceData, DateRange, ProductType, Tag } from '../types';
+import type { AveragePriceData, DateRange, ProductType } from '../types';
 
 function DashboardPage() {
   // Date range state (default: last 30 days)
@@ -29,12 +25,15 @@ function DashboardPage() {
 
   // Filter states
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([]);
-  const [selectedTag, setSelectedTag] = useState<string>('');
   const [selectedProductTypes, setSelectedProductTypes] = useState<string[]>([]);
-  const [windowHours, setWindowHours] = useState<number>(24);
+  const [windowHours, setWindowHours] = useState<number>(1);
 
   // Fetch stores
   const { data: stores, isLoading: storesLoading, error: storesError } = useStores();
+  const activeStores = useMemo(
+    () => (stores ?? []).filter((store) => store.status === 'active'),
+    [stores]
+  );
 
   const hasInitializedStoresRef = useRef(false);
   const previousStoreIdsRef = useRef<string[]>([]);
@@ -43,7 +42,7 @@ function DashboardPage() {
 
   useEffect(() => {
     if (!stores) return;
-    const storeIds = stores.map((store) => store._id);
+    const storeIds = activeStores.map((store) => store._id);
     setSelectedStoreIds((prev) => {
       const prevStoreIds = previousStoreIdsRef.current;
       const validIds = prev.filter((id) => storeIds.includes(id));
@@ -66,21 +65,9 @@ function DashboardPage() {
       previousStoreIdsRef.current = storeIds;
       return nextSelection;
     });
-  }, [stores]);
-
-  const { data: allTags, isLoading: allTagsLoading } = useTags();
+  }, [stores, activeStores]);
 
   const { data: allProductTypes, isLoading: allProductTypesLoading } = useProductTypes();
-
-  // Extract tag names from the tags data
-  const tagOptionsQueries = useQueries({
-    queries: selectedStoreIds.map((storeId) => ({
-      queryKey: ['tags', 'store', storeId],
-      queryFn: () => getStoreTags(storeId),
-      enabled: selectedStoreIds.length > 0,
-      staleTime: 5 * 60 * 1000,
-    })),
-  }) as UseQueryResult<Tag[], Error>[];
 
   const productTypeOptionsQueries = useQueries({
     queries: selectedStoreIds.map((storeId) => ({
@@ -90,24 +77,6 @@ function DashboardPage() {
       staleTime: 5 * 60 * 1000,
     })),
   }) as UseQueryResult<ProductType[], Error>[];
-
-  const availableTags = (() => {
-    if (selectedStoreIds.length === 0) {
-      return (allTags || []).map((tag) => tag.tag).sort();
-    }
-
-    if (tagOptionsQueries.length === 0 || tagOptionsQueries.some((query) => !query.data)) {
-      return [];
-    }
-
-    const tagLists = tagOptionsQueries.map((query) => query.data!.map((tag) => tag.tag));
-    const [first, ...rest] = tagLists;
-    const intersection = first.filter((tag) => rest.every((tags) => tags.includes(tag)));
-
-    return Array.from(new Set(intersection)).sort();
-  })();
-
-  const availableTagsKey = availableTags.join('|');
 
   const availableProductTypes = (() => {
     if (selectedStoreIds.length === 0) {
@@ -131,27 +100,15 @@ function DashboardPage() {
 
   const availableProductTypesKey = availableProductTypes.join('|');
 
-  // Clear selected tag if it's not available in the current tag list
-  const tagsOptionsLoading =
-    selectedStoreIds.length === 0 ? allTagsLoading : tagOptionsQueries.some((query) => query.isLoading);
   const productTypeOptionsLoading =
     selectedStoreIds.length === 0
       ? allProductTypesLoading
       : productTypeOptionsQueries.some((query) => query.isLoading);
 
-  const tagsOptionsReady =
-    selectedStoreIds.length === 0 ? !allTagsLoading : tagOptionsQueries.every((query) => query.isSuccess);
   const productTypeOptionsReady =
     selectedStoreIds.length === 0
       ? !allProductTypesLoading
       : productTypeOptionsQueries.every((query) => query.isSuccess);
-
-  useEffect(() => {
-    if (!tagsOptionsReady) return;
-    if (selectedTag && !availableTags.includes(selectedTag)) {
-      setSelectedTag('');
-    }
-  }, [tagsOptionsReady, availableTagsKey, selectedTag]);
 
   useEffect(() => {
     if (!productTypeOptionsReady) return;
@@ -202,15 +159,7 @@ function DashboardPage() {
     queries: selectedStoreIds.map((storeId) => ({
       queryKey: ['analytics', 'store', storeId, analyticsParams],
       queryFn: () => getAveragePriceByStore(storeId, analyticsParams),
-      enabled: hasStoreSelection && !selectedTag && !hasProductTypeSelection,
-    })),
-  }) as UseQueryResult<AveragePriceData[], Error>[];
-
-  const storeTagQueries = useQueries({
-    queries: selectedStoreIds.map((storeId) => ({
-      queryKey: ['analytics', 'store-tag', storeId, selectedTag, analyticsParams],
-      queryFn: () => getAveragePriceByStoreAndTag(storeId, selectedTag!, analyticsParams),
-      enabled: hasStoreSelection && !!selectedTag && !hasProductTypeSelection,
+      enabled: hasStoreSelection && !hasProductTypeSelection,
     })),
   }) as UseQueryResult<AveragePriceData[], Error>[];
 
@@ -233,11 +182,6 @@ function DashboardPage() {
     })),
   }) as UseQueryResult<AveragePriceData[], Error>[];
 
-  const { data: tagData, isLoading: tagLoading, error: tagError } = useAveragePriceByTag(
-    selectedTag || undefined,
-    analyticsParams
-  );
-
   const productTypeOnlyQueries = useQueries({
     queries: selectedProductTypes.map((productType) => ({
       queryKey: ['analytics', 'product-type', productType, analyticsParams],
@@ -249,7 +193,7 @@ function DashboardPage() {
   const colorPalette = ['#0ea5e9', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#6366f1', '#22d3ee', '#f97316'];
 
   const getStoreLabel = (storeId: string, index: number) => {
-    const store = stores?.find((s) => s._id === storeId);
+    const store = activeStores.find((s) => s._id === storeId);
     return store?.name || `Store ${index + 1}`;
   };
 
@@ -260,13 +204,6 @@ function DashboardPage() {
     data: storeQueries[index]?.data ?? [],
   }));
 
-  const storeTagSeries = selectedStoreIds.map((storeId, index) => ({
-    id: `store-${storeId}`,
-    label: getStoreLabel(storeId, index),
-    color: colorPalette[index % colorPalette.length],
-    data: storeTagQueries[index]?.data ?? [],
-  }));
-
   const storeProductTypeQueryMap = useMemo(() => {
     const map = new Map<string, UseQueryResult<AveragePriceData[], Error>>();
     storeProductTypeCombos.forEach((combo, index) => {
@@ -275,18 +212,22 @@ function DashboardPage() {
     return map;
   }, [storeProductTypeCombos, storeProductTypeQueries]);
 
-  const storeProductTypeSections = selectedProductTypes.map((productType) => ({
-    productType,
-    series: selectedStoreIds.map((storeId, index) => {
-      const query = storeProductTypeQueryMap.get(`${storeId}::${productType}`);
-      return {
-        id: `store-${storeId}-product-${productType}`,
-        label: getStoreLabel(storeId, index),
-        color: colorPalette[index % colorPalette.length],
-        data: query?.data ?? [],
-      };
-    }),
-  }));
+  const storeProductTypeSeries = storeProductTypeCombos.map((combo, index) => {
+    const query = storeProductTypeQueryMap.get(`${combo.storeId}::${combo.productType}`);
+    const storeIndex = selectedStoreIds.findIndex((id) => id === combo.storeId);
+    const productTypeIndex = selectedProductTypes.findIndex((type) => type === combo.productType);
+    const colorIndex =
+      storeIndex >= 0 && productTypeIndex >= 0
+        ? (storeIndex * selectedProductTypes.length + productTypeIndex) % colorPalette.length
+        : index % colorPalette.length;
+
+    return {
+      id: `store-${combo.storeId}-product-${combo.productType}`,
+      label: `${getStoreLabel(combo.storeId, storeIndex)} • ${combo.productType}`,
+      color: colorPalette[colorIndex],
+      data: query?.data ?? [],
+    };
+  });
 
   const productTypeOnlySeries = selectedProductTypes.map((productType, index) => ({
     id: `product-type-${productType}`,
@@ -298,21 +239,30 @@ function DashboardPage() {
   const storeOnlyLoading = storeQueries.some((query) => query.isLoading);
   const storeOnlyError = storeQueries.find((query) => query.error)?.error;
 
-  const storeTagLoading = storeTagQueries.some((query) => query.isLoading);
-  const storeTagError = storeTagQueries.find((query) => query.error)?.error;
-
   const storeProductTypeLoading = storeProductTypeQueries.some((query) => query.isLoading);
   const storeProductTypeError = storeProductTypeQueries.find((query) => query.error)?.error;
 
   const productTypeOnlyLoading = productTypeOnlyQueries.some((query) => query.isLoading);
   const productTypeOnlyError = productTypeOnlyQueries.find((query) => query.error)?.error;
 
+  const latestAnalyticsUpdate = (() => {
+    const timestamps = [
+      ...storeQueries.map((query) => query.dataUpdatedAt ?? 0),
+      ...storeProductTypeQueries.map((query) => query.dataUpdatedAt ?? 0),
+      ...productTypeOnlyQueries.map((query) => query.dataUpdatedAt ?? 0),
+    ].filter((timestamp) => timestamp > 0);
+
+    if (timestamps.length === 0) {
+      return null;
+    }
+
+    return new Date(Math.max(...timestamps));
+  })();
+
   const showStoreProductTypeChart = hasStoreSelection && hasProductTypeSelection;
-  const showStoreTagChart = hasStoreSelection && !!selectedTag && !hasProductTypeSelection;
-  const showStoreOnlyChart = hasStoreSelection && !selectedTag && !hasProductTypeSelection;
-  const showTagOnlyChart = !hasStoreSelection && !!selectedTag;
+  const showStoreOnlyChart = hasStoreSelection && !hasProductTypeSelection;
   const showProductTypeOnlyChart = !hasStoreSelection && hasProductTypeSelection;
-  const showEmptyState = !hasStoreSelection && !selectedTag && !hasProductTypeSelection;
+  const showEmptyState = !hasStoreSelection && !hasProductTypeSelection;
 
   if (storesLoading) {
     return (
@@ -339,17 +289,13 @@ function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <DateRangePicker dateRange={dateRange} onChange={setDateRange} />
         <ChartFilters
-          stores={stores || []}
+          stores={activeStores}
           selectedStoreIds={selectedStoreIds}
           selectedProductTypes={selectedProductTypes}
-          selectedTag={selectedTag}
-          availableTags={availableTags}
           availableProductTypes={availableProductTypes}
           windowHours={windowHours}
-          tagsLoading={tagsOptionsLoading}
           productTypesLoading={productTypeOptionsLoading}
           onStoreChange={setSelectedStoreIds}
-          onTagChange={setSelectedTag}
           onProductTypeChange={setSelectedProductTypes}
           onWindowHoursChange={setWindowHours}
         />
@@ -357,13 +303,19 @@ function DashboardPage() {
           <h3 className="font-semibold text-gray-900 mb-4">Quick Stats</h3>
           <div className="space-y-3">
             <div>
-              <p className="text-sm text-gray-600">Total Stores</p>
-              <p className="text-2xl font-bold text-gray-900">{stores?.length || 0}</p>
+              <p className="text-sm text-gray-600">Active Stores</p>
+              <p className="text-2xl font-bold text-gray-900">{activeStores.length}</p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Date Range</p>
               <p className="text-sm font-medium text-gray-900">
                 {Math.ceil((dateRange.endDate.getTime() - dateRange.startDate.getTime()) / (1000 * 60 * 60 * 24))} days
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Last Updated</p>
+              <p className="text-sm font-medium text-gray-900">
+                {latestAnalyticsUpdate ? latestAnalyticsUpdate.toLocaleString() : 'Not yet loaded'}
               </p>
             </div>
           </div>
@@ -383,33 +335,10 @@ function DashboardPage() {
             ) : storeProductTypeError ? (
               <ErrorMessage message="Failed to load combined store-product-type analytics." />
             ) : (
-              storeProductTypeSections.map((section) => (
-                <LineChart
-                  key={section.productType}
-                  title={`Average Price by Store • Product Type: ${section.productType}`}
-                  series={section.series}
-                  emptyMessage="No data available for the selected store and product type combination."
-                />
-              ))
-            )}
-          </div>
-        )}
-
-        {showStoreTagChart && (
-          <div>
-            {storeTagLoading ? (
-              <div className="card">
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner />
-                </div>
-              </div>
-            ) : storeTagError ? (
-              <ErrorMessage message="Failed to load combined store-tag analytics." />
-            ) : (
               <LineChart
-                title={`Average Price by Store • Tag: ${selectedTag}`}
-                series={storeTagSeries}
-                emptyMessage="No data available for the selected store and tag combination."
+                title="Average Price by Store and Product Type"
+                series={storeProductTypeSeries}
+                emptyMessage="No data available for the selected store and product type combination."
               />
             )}
           </div>
@@ -430,33 +359,6 @@ function DashboardPage() {
                 title="Average Price by Store"
                 series={storeOnlySeries}
                 emptyMessage="No data available for the selected stores."
-              />
-            )}
-          </div>
-        )}
-
-        {showTagOnlyChart && (
-          <div>
-            {tagLoading ? (
-              <div className="card">
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner />
-                </div>
-              </div>
-            ) : tagError ? (
-              <ErrorMessage message="Failed to load tag analytics." />
-            ) : (
-              <LineChart
-                title={`Average Price by Tag - ${selectedTag}`}
-                series={[
-                  {
-                    id: `tag-${selectedTag}`,
-                    label: selectedTag,
-                    color: '#8b5cf6',
-                    data: tagData || [],
-                  },
-                ]}
-                emptyMessage="No data available for the selected tag."
               />
             )}
           </div>
@@ -490,10 +392,10 @@ function DashboardPage() {
           <div className="card">
             <div className="text-center py-12">
               <p className="text-gray-600 mb-2">
-                Select a store, tag, or product type from the filters to view analytics
+                Select a store or product type from the filters to view analytics
               </p>
               <p className="text-sm text-gray-500">
-                You can filter by store, tag, product type, or combinations to see price trends over time
+                You can filter by store, product type, or combinations to see price trends over time
               </p>
             </div>
           </div>

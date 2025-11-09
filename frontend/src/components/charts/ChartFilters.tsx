@@ -5,14 +5,10 @@ interface ChartFiltersProps {
   stores: Store[];
   selectedStoreIds: string[];
   selectedProductTypes: string[];
-  selectedTag?: string;
-  availableTags: string[];
   availableProductTypes: string[];
   windowHours: number;
-  tagsLoading: boolean;
   productTypesLoading: boolean;
   onStoreChange: (storeIds: string[]) => void;
-  onTagChange: (tag: string) => void;
   onProductTypeChange: (productTypes: string[]) => void;
   onWindowHoursChange: (hours: number) => void;
 }
@@ -21,14 +17,10 @@ function ChartFilters({
   stores,
   selectedStoreIds,
   selectedProductTypes,
-  selectedTag,
-  availableTags,
   availableProductTypes,
   windowHours,
-  tagsLoading,
   productTypesLoading,
   onStoreChange,
-  onTagChange,
   onProductTypeChange,
   onWindowHoursChange,
 }: ChartFiltersProps) {
@@ -307,33 +299,6 @@ function ChartFilters({
               : selectedProductTypes.length === 0
               ? 'Showing all product types'
               : 'Filter analytics by product type'}
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="tag" className="label">
-            Tag
-          </label>
-          <select
-            id="tag"
-            value={selectedTag || ''}
-            onChange={(e) => onTagChange(e.target.value)}
-            className="input-field"
-            disabled={tagsLoading || availableTags.length === 0}
-          >
-            <option value="">All Tags</option>
-            {availableTags.map((tag) => (
-              <option key={tag} value={tag}>
-                {tag}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-gray-500 mt-1">
-            {tagsLoading
-              ? 'Loading tags...'
-              : availableTags.length === 0
-              ? 'No tags available for the selected stores'
-              : 'Filter analytics by tag'}
           </p>
         </div>
 

@@ -20,11 +20,18 @@ export async function pollStore(store) {
     let errors = 0;
 
     // Process each product
+    let totalSnapshots = 0;
     for (const product of products) {
       try {
         const { productData, variantsData } = parseProduct(product);
-        await upsertProduct(productData, variantsData, store._id.toString());
+        const snapshotCount = await upsertProduct(
+          productData, 
+          variantsData, 
+          store._id.toString(),
+          store.store_name
+        );
         saved++;
+        totalSnapshots += snapshotCount;
 
         if (saved % 50 === 0) {
           console.log(`  Progress: ${saved}/${products.length} products saved`);
@@ -40,9 +47,10 @@ export async function pollStore(store) {
 
     console.log(`\n✓ Store polling complete:`);
     console.log(`  - Saved: ${saved} products`);
+    console.log(`  - Price snapshots: ${totalSnapshots}`);
     console.log(`  - Errors: ${errors} products`);
 
-    return { saved, errors };
+    return { saved, errors, snapshots: totalSnapshots };
   } catch (error) {
     console.error(`✗ Failed to poll store ${store.store_name}:`, error.message);
     throw error;
@@ -59,7 +67,12 @@ export async function pollAllStores() {
 
   if (stores.length === 0) {
     console.log('No active stores found.');
-    return;
+    return {
+      totalStores: 0,
+      successfulStores: 0,
+      failedStores: 0,
+      totalProducts: 0
+    };
   }
 
   console.log(`Found ${stores.length} active store(s) to poll\n`);

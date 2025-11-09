@@ -54,3 +54,10 @@ export function getStoresCollection() {
 export function getProductsCollection() {
   return getDb().collection('products');
 }
+
+/**
+ * Get price_snapshots collection
+ */
+export function getPriceSnapshotsCollection() {
+  return getDb().collection('price_snapshots');
+}

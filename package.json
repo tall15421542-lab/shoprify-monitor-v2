@@ -6,18 +6,36 @@
   "type": "module",
   "scripts": {
     "start": "node src/main.js",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "test:unit": "node --test test/parser.test.js",
     "test:integration": "node --test test/fetcher.test.js test/database.test.js",
-    "test:e2e": "node --test test/poller.test.js"
+    "test:e2e": "node --test test/poller.test.js",
+    "test:triggers": "node --test --test-concurrency=1 test/poller-controller.test.js test/aggregator-controller.test.js",
+    "test:rest-communication": "node --test test/rest-communication.test.js",
+    "backend:start": "node backend/src/main.js",
+    "backend:test:server": "node --test backend/test/api/server.test.js",
+    "backend:test:stores": "node --test backend/test/api/stores.test.js",
+    "backend:test:products": "node --test backend/test/api/products.test.js",
+    "backend:test:price-history": "node --test backend/test/api/price-history.test.js",
+    "backend:test:analytics": "node --test backend/test/api/analytics.test.js",
+    "backend:test:changelogs": "node --test backend/test/api/changelogs.test.js",
+    "backend:test:tags": "node --test backend/test/api/tags.test.js",
+    "backend:test:integration": "node --test backend/test/integration/api-flow.test.js"
   },
-  "keywords": ["shopify", "monitor", "price-tracking"],
+  "keywords": [
+    "shopify",
+    "monitor",
+    "price-tracking"
+  ],
   "author": "",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "mongodb": "^6.3.0"
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "mongodb": "^6.3.0",
+    "node-cron": "^4.2.1"
   }
 }

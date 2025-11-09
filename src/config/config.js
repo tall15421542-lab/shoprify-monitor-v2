@@ -8,5 +8,10 @@ export const config = {
   // Polling configuration
   polling: {
     defaultInterval: 60 // seconds
+  },
+
+  // Trigger API configuration
+  trigger: {
+    port: parseInt(process.env.TRIGGER_PORT) || 3001
   }
 };

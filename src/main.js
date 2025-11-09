@@ -1,6 +1,9 @@
 import { connect, close } from './database/connection.js';
 import { initializeIndexes } from './database/models.js';
+import { initializeAnalyticsSchema } from './database/analytics-schema.js';
 import { pollAllStores } from './services/poller.js';
+import { startScheduler, stopScheduler } from './services/scheduler.js';
+import { startTriggerServer } from './api/server.js';
 import { config } from './config/config.js';
 
 /**
@@ -14,6 +17,23 @@ async function main() {
     // Connect to database
     await connect();
     await initializeIndexes();
+    
+    // Initialize analytics schema
+    console.log('\n📊 Initializing analytics...');
+    await initializeAnalyticsSchema();
+    
+    // Start analytics services
+    // Note: Price snapshots are now written directly during product upsert
+    // No separate transformer service is needed
+    
+    // Start aggregation scheduler
+    startScheduler();
+    
+    console.log('✓ Analytics services initialized\n');
+
+    // Start HTTP API server for trigger endpoints
+    await startTriggerServer(config.trigger.port);
+    console.log(`✓ Trigger API server started on port ${config.trigger.port}\n`);
 
     // Poll all stores once
     await pollAllStores();
@@ -46,13 +66,19 @@ async function main() {
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n\nShutting down gracefully...');
+  console.log('Stopping analytics services...');
+  stopScheduler();
   await close();
+  console.log('✓ Shutdown complete');
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\n\nShutting down gracefully...');
+  console.log('Stopping analytics services...');
+  stopScheduler();
   await close();
+  console.log('✓ Shutdown complete');
   process.exit(0);
 });
 

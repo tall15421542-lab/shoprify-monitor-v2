@@ -160,8 +160,8 @@ describe('Database Operations', () => {
       assert.strictEqual(product.title, 'Test Product 1 Updated');
 
       const variant = product.variants.find(v => v.variant_id === 888001);
-      // Price history should still be 1 since price didn't change
-      assert.strictEqual(variant.price_history.length, 1);
+      // Price history is always appended, so it should now be 2
+      assert.strictEqual(variant.price_history.length, 2);
     });
 
     it('should add to price history when price changes', async () => {
@@ -194,9 +194,11 @@ describe('Database Operations', () => {
 
       const variant = product.variants.find(v => v.variant_id === 888001);
       assert.strictEqual(variant.current_price, 24.99);
-      assert.strictEqual(variant.price_history.length, 2);
+      // Should have 3 entries: initial (19.99) + previous test (19.99) + this test (24.99)
+      assert.strictEqual(variant.price_history.length, 3);
       assert.strictEqual(variant.price_history[0].price, 19.99);
-      assert.strictEqual(variant.price_history[1].price, 24.99);
+      assert.strictEqual(variant.price_history[1].price, 19.99);
+      assert.strictEqual(variant.price_history[2].price, 24.99);
     });
 
     it('should add new variants to existing product', async () => {

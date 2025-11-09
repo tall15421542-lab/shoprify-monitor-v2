@@ -1,5 +1,29 @@
 import { ObjectId } from 'mongodb';
-import { getStoresCollection, getProductsCollection } from './models.js';
+import { getStoresCollection, getProductsCollection, getPriceSnapshotsCollection } from './models.js';
+
+/**
+ * Create a price snapshot document
+ * @param {Object} productData - Product data
+ * @param {Object} variant - Variant data
+ * @param {ObjectId} storeId - Store ID
+ * @param {string} storeName - Store name (denormalized for analytics)
+ * @param {Array} tags - Product tags
+ * @param {Date} timestamp - Timestamp for the snapshot
+ * @returns {Object} Price snapshot document
+ */
+function createPriceSnapshot(productData, variant, storeId, storeName, tags, timestamp) {
+  return {
+    timestamp: timestamp,
+    metadata: {
+      store_id: storeId,
+      product_id: productData.product_id,
+      variant_id: variant.variant_id,
+      tags: tags || []
+    },
+    store_name: storeName,
+    price: variant.price
+  };
+}
 
 /**
  * Get all active stores that need to be polled
@@ -22,10 +46,17 @@ export async function updateLastPolled(storeId) {
 
 /**
  * Save or update product with embedded variants and price history
+ * Also writes price snapshots for analytics
+ * @param {Object} productData - Product data
+ * @param {Array} variantsData - Array of variant data
+ * @param {string} storeId - Store ID
+ * @param {string} storeName - Store name (for denormalized analytics data)
  */
-export async function upsertProduct(productData, variantsData, storeId) {
+export async function upsertProduct(productData, variantsData, storeId, storeName) {
   const products = getProductsCollection();
+  const priceSnapshots = getPriceSnapshotsCollection();
   const currentTime = new Date();
+  const storeObjectId = new ObjectId(storeId);
 
   // First, upsert the base product document
   const productUpdate = {
@@ -43,23 +74,26 @@ export async function upsertProduct(productData, variantsData, storeId) {
     },
     $setOnInsert: {
       product_id: productData.product_id,
-      store_id: new ObjectId(storeId),
+      store_id: storeObjectId,
       variants: []
     }
   };
 
   await products.updateOne(
-    { product_id: productData.product_id, store_id: new ObjectId(storeId) },
+    { product_id: productData.product_id, store_id: storeObjectId },
     productUpdate,
     { upsert: true }
   );
+
+  // Collect price snapshots for bulk insert
+  const snapshots = [];
 
   // Now handle each variant
   for (const variant of variantsData) {
     // Check if variant already exists in the product
     const existingProduct = await products.findOne({
       product_id: productData.product_id,
-      store_id: new ObjectId(storeId),
+      store_id: storeObjectId,
       'variants.variant_id': variant.variant_id
     });
 
@@ -68,7 +102,7 @@ export async function upsertProduct(productData, variantsData, storeId) {
       await products.updateOne(
         {
           product_id: productData.product_id,
-          store_id: new ObjectId(storeId)
+          store_id: storeObjectId
         },
         {
           $set: {
@@ -92,7 +126,7 @@ export async function upsertProduct(productData, variantsData, storeId) {
       await products.updateOne(
         {
           product_id: productData.product_id,
-          store_id: new ObjectId(storeId)
+          store_id: storeObjectId
         },
         {
           $push: {
@@ -112,7 +146,25 @@ export async function upsertProduct(productData, variantsData, storeId) {
         }
       );
     }
+
+    // Create price snapshot for this variant
+    const snapshot = createPriceSnapshot(
+      productData,
+      variant,
+      storeObjectId,
+      storeName,
+      productData.tags,
+      currentTime
+    );
+    snapshots.push(snapshot);
   }
+
+  // Bulk insert all price snapshots
+  if (snapshots.length > 0) {
+    await priceSnapshots.insertMany(snapshots);
+  }
+
+  return snapshots.length; // Return number of snapshots created
 }
 
 /**

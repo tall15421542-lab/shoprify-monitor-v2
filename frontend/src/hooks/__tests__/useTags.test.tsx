@@ -7,6 +7,7 @@ import * as api from '../../services/api';
 // Mock the API module
 vi.mock('../../services/api', () => ({
   getAllTags: vi.fn(),
+  getStoreTags: vi.fn(),
 }));
 
 describe('useTags', () => {
@@ -170,6 +171,65 @@ describe('useTags', () => {
     });
 
     expect(api.getAllTags).toHaveBeenCalledTimes(2);
+  });
+
+  it('should fetch store-specific tags when storeId is provided', async () => {
+    const mockStoreTags = [
+      { tag: 'electronics', count: 5 },
+      { tag: 'phones', count: 3 },
+    ];
+    const storeId = '507f1f77bcf86cd799439011';
+
+    vi.mocked(api.getStoreTags).mockResolvedValue(mockStoreTags);
+
+    const { result } = renderHook(() => useTags(storeId), { wrapper });
+
+    // Initially loading
+    expect(result.current.isLoading).toBe(true);
+
+    // Wait for the query to resolve
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    // Check the result
+    expect(result.current.data).toEqual(mockStoreTags);
+    expect(api.getStoreTags).toHaveBeenCalledWith(storeId);
+    expect(api.getStoreTags).toHaveBeenCalledTimes(1);
+  });
+
+  it('should use different query keys for all tags vs store tags', async () => {
+    const mockAllTags = [{ tag: 'all-tags', count: 10 }];
+    const mockStoreTags = [{ tag: 'store-tag', count: 5 }];
+    const storeId = '507f1f77bcf86cd799439011';
+
+    vi.mocked(api.getAllTags).mockResolvedValue(mockAllTags);
+    vi.mocked(api.getStoreTags).mockResolvedValue(mockStoreTags);
+
+    // Fetch all tags
+    const { result: allTagsResult } = renderHook(() => useTags(), { wrapper });
+
+    await waitFor(() => {
+      expect(allTagsResult.current.isSuccess).toBe(true);
+    });
+
+    // Fetch store-specific tags
+    const { result: storeTagsResult } = renderHook(() => useTags(storeId), { wrapper });
+
+    await waitFor(() => {
+      expect(storeTagsResult.current.isSuccess).toBe(true);
+    });
+
+    // Both queries should have been called (different cache keys)
+    expect(api.getAllTags).toHaveBeenCalledTimes(1);
+    expect(api.getStoreTags).toHaveBeenCalledTimes(1);
+
+    // Check that the queries are cached with different keys
+    const allTagsCache = queryClient.getQueryData(['tags']);
+    const storeTagsCache = queryClient.getQueryData(['tags', 'store', storeId]);
+
+    expect(allTagsCache).toEqual(mockAllTags);
+    expect(storeTagsCache).toEqual(mockStoreTags);
   });
 });
 

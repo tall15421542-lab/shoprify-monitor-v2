@@ -76,6 +76,11 @@ export const getAllTags = async (): Promise<Tag[]> => {
   return response.data.tags;
 };
 
+export const getStoreTags = async (storeId: string): Promise<Tag[]> => {
+  const response = await api.get<{ store_id: string; count: number; tags: Tag[] }>(`/stores/${storeId}/tags`);
+  return response.data.tags;
+};
+
 // Product APIs
 export const getStoreProducts = async (storeId: string): Promise<Product[]> => {
   const response = await api.get<{ store_id: string; store_name: string; count: number; products: any[] }>(`/stores/${storeId}/products`);

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useStores } from '../hooks/useStores';
 import { useTags } from '../hooks/useTags';
 import { useAveragePriceByStore, useAveragePriceByTag, useAveragePriceByStoreAndTag } from '../hooks/useAnalytics';
@@ -24,14 +24,21 @@ function DashboardPage() {
   // Fetch stores
   const { data: stores, isLoading: storesLoading, error: storesError } = useStores();
 
-  // Fetch all available tags globally (across all stores)
-  const { data: tags } = useTags();
+  // Fetch tags - filtered by store if a store is selected, otherwise all tags
+  const { data: tags } = useTags(selectedStoreId || undefined);
 
   // Extract tag names from the tags data
   const availableTags = useMemo(() => {
     if (!tags) return [];
     return tags.map(t => t.tag).sort();
   }, [tags]);
+
+  // Clear selected tag if it's not available in the current tag list
+  useEffect(() => {
+    if (selectedTag && !availableTags.includes(selectedTag)) {
+      setSelectedTag('');
+    }
+  }, [availableTags, selectedTag]);
 
   // Analytics queries
   const analyticsParams = {
@@ -109,50 +116,8 @@ function DashboardPage() {
 
       {/* Charts Grid */}
       <div className="space-y-6">
-        {/* Store Chart */}
-        {selectedStoreId && (
-          <div>
-            {storeLoading ? (
-              <div className="card">
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner />
-                </div>
-              </div>
-            ) : storeError ? (
-              <ErrorMessage message="Failed to load store analytics." />
-            ) : (
-              <LineChart
-                data={storeData || []}
-                title={`Average Price - ${stores?.find(s => s._id === selectedStoreId)?.name || 'Store'}`}
-                color="#0ea5e9"
-              />
-            )}
-          </div>
-        )}
-
-        {/* Tag Chart */}
-        {selectedTag && (
-          <div>
-            {tagLoading ? (
-              <div className="card">
-                <div className="flex justify-center py-12">
-                  <LoadingSpinner />
-                </div>
-              </div>
-            ) : tagError ? (
-              <ErrorMessage message="Failed to load tag analytics." />
-            ) : (
-              <LineChart
-                data={tagData || []}
-                title={`Average Price by Tag - ${selectedTag}`}
-                color="#8b5cf6"
-              />
-            )}
-          </div>
-        )}
-
-        {/* Store & Tag Combined Chart */}
-        {selectedStoreId && selectedTag && (
+        {/* Store & Tag Combined Chart - Show this when both are selected */}
+        {selectedStoreId && selectedTag ? (
           <div>
             {storeTagLoading ? (
               <div className="card">
@@ -170,10 +135,46 @@ function DashboardPage() {
               />
             )}
           </div>
-        )}
-
-        {/* Empty State */}
-        {!selectedStoreId && !selectedTag && (
+        ) : selectedStoreId ? (
+          /* Store Chart - Show this when only store is selected */
+          <div>
+            {storeLoading ? (
+              <div className="card">
+                <div className="flex justify-center py-12">
+                  <LoadingSpinner />
+                </div>
+              </div>
+            ) : storeError ? (
+              <ErrorMessage message="Failed to load store analytics." />
+            ) : (
+              <LineChart
+                data={storeData || []}
+                title={`Average Price - ${stores?.find(s => s._id === selectedStoreId)?.name || 'Store'}`}
+                color="#0ea5e9"
+              />
+            )}
+          </div>
+        ) : selectedTag ? (
+          /* Tag Chart - Show this when only tag is selected */
+          <div>
+            {tagLoading ? (
+              <div className="card">
+                <div className="flex justify-center py-12">
+                  <LoadingSpinner />
+                </div>
+              </div>
+            ) : tagError ? (
+              <ErrorMessage message="Failed to load tag analytics." />
+            ) : (
+              <LineChart
+                data={tagData || []}
+                title={`Average Price by Tag - ${selectedTag}`}
+                color="#8b5cf6"
+              />
+            )}
+          </div>
+        ) : (
+          /* Empty State - Show when nothing is selected */
           <div className="card">
             <div className="text-center py-12">
               <p className="text-gray-600 mb-2">

@@ -21,6 +21,12 @@ export interface Tag {
   count: number;
 }
 
+// Product Type Types
+export interface ProductType {
+  product_type: string;
+  count: number;
+}
+
 // Product Types
 export interface Product {
   _id: string;

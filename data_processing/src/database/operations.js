@@ -18,6 +18,7 @@ function createPriceSnapshot(productData, variant, storeId, storeName, tags, tim
       store_id: storeId,
       product_id: productData.product_id,
       variant_id: variant.variant_id,
+      product_type: productData.product_type || null,
       tags: tags || []
     },
     store_name: storeName,

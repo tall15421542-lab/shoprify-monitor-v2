@@ -11,14 +11,25 @@ import {
   createHourlyTagAvgIndexes,
   createHourlyStoreTagAvgCollection,
   createHourlyStoreTagAvgIndexes,
+  createHourlyProductTypeAvgCollection,
+  createHourlyProductTypeAvgIndexes,
+  createHourlyStoreProductTypeAvgCollection,
+  createHourlyStoreProductTypeAvgIndexes,
   initializeAnalyticsSchema
 } from '../src/database/analytics-schema.js';
 
 // Helper function to clean up test collections
 async function cleanupTestCollections() {
   const db = getDb();
-  const collections = ['price_snapshots', 'hourly_store_avg', 'hourly_tag_avg', 'hourly_store_tag_avg'];
-  
+  const collections = [
+    'price_snapshots',
+    'hourly_store_avg',
+    'hourly_tag_avg',
+    'hourly_store_tag_avg',
+    'hourly_product_type_avg',
+    'hourly_store_product_type_avg'
+  ];
+
   for (const collectionName of collections) {
     try {
       await db.collection(collectionName).drop();
@@ -149,15 +160,81 @@ test('Analytics Schema Tests', async (t) => {
   
   await t.test('creates index on store_id + tag + window_start', async () => {
     await createHourlyStoreTagAvgIndexes();
-    
+
     const db = getDb();
     const collection = db.collection('hourly_store_tag_avg');
     const indexes = await collection.indexes();
-    
+
     const storeTagWindowIndex = indexes.find(idx => idx.name === 'store_id_tag_window_start_idx');
     assert.ok(storeTagWindowIndex, 'store_id_tag_window_start_idx should exist');
     assert.deepStrictEqual(storeTagWindowIndex.key, { store_id: 1, tag: 1, window_start: 1 });
     assert.strictEqual(storeTagWindowIndex.unique, true, 'index should be unique');
+  });
+
+  await t.test('creates compound index on timestamp + product_type', async () => {
+    const db = getDb();
+    const collection = db.collection('price_snapshots');
+    const indexes = await collection.indexes();
+
+    const timestampProductTypeIndex = indexes.find(idx => idx.name === 'timestamp_product_type_idx');
+    assert.ok(timestampProductTypeIndex, 'timestamp_product_type_idx should exist');
+    assert.deepStrictEqual(timestampProductTypeIndex.key, { timestamp: 1, 'metadata.product_type': 1 });
+  });
+
+  await t.test('creates compound index on timestamp + store_id + product_type', async () => {
+    const db = getDb();
+    const collection = db.collection('price_snapshots');
+    const indexes = await collection.indexes();
+
+    const compoundProductTypeIndex = indexes.find(idx => idx.name === 'timestamp_store_id_product_type_idx');
+    assert.ok(compoundProductTypeIndex, 'timestamp_store_id_product_type_idx should exist');
+    assert.deepStrictEqual(compoundProductTypeIndex.key, { timestamp: 1, 'metadata.store_id': 1, 'metadata.product_type': 1 });
+  });
+
+  await t.test('creates hourly_product_type_avg collection', async () => {
+    await createHourlyProductTypeAvgCollection();
+
+    const db = getDb();
+    const collections = await db.listCollections({ name: 'hourly_product_type_avg' }).toArray();
+
+    assert.strictEqual(collections.length, 1, 'hourly_product_type_avg collection should exist');
+    assert.strictEqual(collections[0].name, 'hourly_product_type_avg');
+  });
+
+  await t.test('creates index on product_type + window_start', async () => {
+    await createHourlyProductTypeAvgIndexes();
+
+    const db = getDb();
+    const collection = db.collection('hourly_product_type_avg');
+    const indexes = await collection.indexes();
+
+    const productTypeWindowIndex = indexes.find(idx => idx.name === 'product_type_window_start_idx');
+    assert.ok(productTypeWindowIndex, 'product_type_window_start_idx should exist');
+    assert.deepStrictEqual(productTypeWindowIndex.key, { product_type: 1, window_start: 1 });
+    assert.strictEqual(productTypeWindowIndex.unique, true, 'index should be unique');
+  });
+
+  await t.test('creates hourly_store_product_type_avg collection', async () => {
+    await createHourlyStoreProductTypeAvgCollection();
+
+    const db = getDb();
+    const collections = await db.listCollections({ name: 'hourly_store_product_type_avg' }).toArray();
+
+    assert.strictEqual(collections.length, 1, 'hourly_store_product_type_avg collection should exist');
+    assert.strictEqual(collections[0].name, 'hourly_store_product_type_avg');
+  });
+
+  await t.test('creates index on store_id + product_type + window_start', async () => {
+    await createHourlyStoreProductTypeAvgIndexes();
+
+    const db = getDb();
+    const collection = db.collection('hourly_store_product_type_avg');
+    const indexes = await collection.indexes();
+
+    const storeProductTypeWindowIndex = indexes.find(idx => idx.name === 'store_id_product_type_window_start_idx');
+    assert.ok(storeProductTypeWindowIndex, 'store_id_product_type_window_start_idx should exist');
+    assert.deepStrictEqual(storeProductTypeWindowIndex.key, { store_id: 1, product_type: 1, window_start: 1 });
+    assert.strictEqual(storeProductTypeWindowIndex.unique, true, 'index should be unique');
   });
 });
 

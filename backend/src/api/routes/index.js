@@ -5,6 +5,7 @@ import analyticsRouter from './analytics.js';
 import changelogsRouter from './changelogs.js';
 import triggerRouter from './triggers.js';
 import tagsRouter from './tags.js';
+import productTypesRouter from './product-types.js';
 
 /**
  * Register all API routes
@@ -19,5 +20,6 @@ export function registerRoutes(app) {
   app.use('/', changelogsRouter);
   app.use('/', triggerRouter); // Poll and aggregate trigger routes via HTTP client (mounted at root like other routes)
   app.use('/', tagsRouter); // Tags routes
+  app.use('/', productTypesRouter); // Product types routes
 }
 

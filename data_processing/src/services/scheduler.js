@@ -2,7 +2,9 @@ import cron from 'node-cron';
 import {
   aggregateStoreAverages,
   aggregateTagAverages,
-  aggregateStoreTagAverages
+  aggregateStoreTagAverages,
+  aggregateProductTypeAverages,
+  aggregateStoreProductTypeAverages
 } from './aggregator.js';
 
 let scheduledTask = null;
@@ -30,28 +32,34 @@ export function getPreviousHourWindow() {
  */
 export async function runAggregations(windowStart, windowEnd) {
   console.log(`\n🔄 Starting aggregations for window: ${windowStart.toISOString()} to ${windowEnd.toISOString()}`);
-  
+
   try {
-    // Run all three aggregations
+    // Run all aggregations
     const storeCount = await aggregateStoreAverages(windowStart, windowEnd);
     const tagCount = await aggregateTagAverages(windowStart, windowEnd);
     const storeTagCount = await aggregateStoreTagAverages(windowStart, windowEnd);
-    
+    const productTypeCount = await aggregateProductTypeAverages(windowStart, windowEnd);
+    const storeProductTypeCount = await aggregateStoreProductTypeAverages(windowStart, windowEnd);
+
     console.log(`✅ Aggregation completed successfully:`);
     console.log(`   - ${storeCount} store averages`);
     console.log(`   - ${tagCount} tag averages`);
-    console.log(`   - ${storeTagCount} store-tag averages\n`);
-    
+    console.log(`   - ${storeTagCount} store-tag averages`);
+    console.log(`   - ${productTypeCount} product type averages`);
+    console.log(`   - ${storeProductTypeCount} store-product-type averages\n`);
+
     return {
       success: true,
       storeCount,
       tagCount,
-      storeTagCount
+      storeTagCount,
+      productTypeCount,
+      storeProductTypeCount
     };
   } catch (error) {
     console.error(`❌ Aggregation failed for window ${windowStart.toISOString()}:`, error.message);
     console.error(error.stack);
-    
+
     return {
       success: false,
       error: error.message

@@ -258,3 +258,139 @@ function aggregateGroup(group) {
   };
 }
 
+/**
+ * Get average price by product type
+ * GET /analytics/product-types/:productType/average-price
+ * Query params:
+ *   - start_date: ISO date string (optional)
+ *   - end_date: ISO date string (optional)
+ *   - window_hours: Number of hours to group by (default: 1)
+ */
+export async function getProductTypeAveragePrice(req, res, next) {
+  try {
+    const { productType } = req.params;
+    const { start_date, end_date, window_hours = 1 } = req.query;
+
+    const db = getDb();
+    const collection = db.collection('hourly_product_type_avg');
+
+    // Build query filter
+    const filter = { product_type: productType };
+
+    // Add date range filter
+    if (start_date || end_date) {
+      filter.window_start = {};
+      if (start_date) {
+        const startDate = new Date(start_date);
+        if (isNaN(startDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid start_date format' });
+        }
+        filter.window_start.$gte = startDate;
+      }
+      if (end_date) {
+        const endDate = new Date(end_date);
+        if (isNaN(endDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid end_date format' });
+        }
+        filter.window_start.$lte = endDate;
+      }
+    }
+
+    // Get data
+    let results = await collection.find(filter).sort({ window_start: 1 }).toArray();
+
+    // Group by window_hours if specified
+    const windowHoursNum = parseInt(window_hours);
+    if (windowHoursNum > 1) {
+      results = groupByWindowHours(results, windowHoursNum);
+    }
+
+    res.json({
+      product_type: productType,
+      window_hours: windowHoursNum,
+      count: results.length,
+      data: results.map(r => ({
+        window_start: r.window_start,
+        avg_price: r.avg_price,
+        product_count: r.product_count,
+        store_count: r.store_count
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Get average price by store and product type
+ * GET /analytics/stores/:storeId/product-types/:productType/average-price
+ * Query params:
+ *   - start_date: ISO date string (optional)
+ *   - end_date: ISO date string (optional)
+ *   - window_hours: Number of hours to group by (default: 1)
+ */
+export async function getStoreProductTypeAveragePrice(req, res, next) {
+  try {
+    const { storeId, productType } = req.params;
+    const { start_date, end_date, window_hours = 1 } = req.query;
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(storeId)) {
+      return res.status(400).json({
+        error: 'Invalid store ID format'
+      });
+    }
+
+    const db = getDb();
+    const collection = db.collection('hourly_store_product_type_avg');
+
+    // Build query filter
+    const filter = {
+      store_id: new ObjectId(storeId),
+      product_type: productType
+    };
+
+    // Add date range filter
+    if (start_date || end_date) {
+      filter.window_start = {};
+      if (start_date) {
+        const startDate = new Date(start_date);
+        if (isNaN(startDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid start_date format' });
+        }
+        filter.window_start.$gte = startDate;
+      }
+      if (end_date) {
+        const endDate = new Date(end_date);
+        if (isNaN(endDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid end_date format' });
+        }
+        filter.window_start.$lte = endDate;
+      }
+    }
+
+    // Get data
+    let results = await collection.find(filter).sort({ window_start: 1 }).toArray();
+
+    // Group by window_hours if specified
+    const windowHoursNum = parseInt(window_hours);
+    if (windowHoursNum > 1) {
+      results = groupByWindowHours(results, windowHoursNum);
+    }
+
+    res.json({
+      store_id: storeId,
+      product_type: productType,
+      window_hours: windowHoursNum,
+      count: results.length,
+      data: results.map(r => ({
+        window_start: r.window_start,
+        avg_price: r.avg_price,
+        product_count: r.product_count
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

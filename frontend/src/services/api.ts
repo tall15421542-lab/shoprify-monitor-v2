@@ -3,6 +3,7 @@ import type {
   Store,
   AddStoreData,
   Tag,
+  ProductType,
   Product,
   AnalyticsParams,
   AveragePriceData,
@@ -10,8 +11,12 @@ import type {
   ChangelogParams,
 } from '../types';
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:3000';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -79,6 +84,17 @@ export const getAllTags = async (): Promise<Tag[]> => {
 export const getStoreTags = async (storeId: string): Promise<Tag[]> => {
   const response = await api.get<{ store_id: string; count: number; tags: Tag[] }>(`/stores/${storeId}/tags`);
   return response.data.tags;
+};
+
+// Product Type APIs
+export const getAllProductTypes = async (): Promise<ProductType[]> => {
+  const response = await api.get<{ count: number; product_types: ProductType[] }>('/product-types');
+  return response.data.product_types;
+};
+
+export const getStoreProductTypes = async (storeId: string): Promise<ProductType[]> => {
+  const response = await api.get<{ store_id: string; count: number; product_types: ProductType[] }>(`/stores/${storeId}/product-types`);
+  return response.data.product_types;
 };
 
 // Product APIs
@@ -397,7 +413,71 @@ export const getAveragePriceByStoreAndTag = async (
       },
     }
   );
-  
+
+  // Transform backend format to frontend format
+  return response.data.data.map(item => ({
+    timestamp: new Date(item.window_start),
+    averagePrice: item.avg_price,
+    productCount: item.product_count,
+  }));
+};
+
+export const getAveragePriceByProductType = async (
+  productType: string,
+  params: AnalyticsParams
+): Promise<AveragePriceData[]> => {
+  const response = await api.get<{
+    product_type: string;
+    window_hours: number;
+    count: number;
+    data: Array<{
+      window_start: string;
+      avg_price: number;
+      product_count: number;
+      store_count?: number;
+    }>;
+  }>(`/analytics/product-types/${encodeURIComponent(productType)}/average-price`, {
+    params: {
+      start_date: params.startDate.toISOString(),
+      end_date: params.endDate.toISOString(),
+      window_hours: params.windowHours || 24,
+    },
+  });
+
+  // Transform backend format to frontend format
+  return response.data.data.map(item => ({
+    timestamp: new Date(item.window_start),
+    averagePrice: item.avg_price,
+    productCount: item.product_count,
+  }));
+};
+
+export const getAveragePriceByStoreAndProductType = async (
+  storeId: string,
+  productType: string,
+  params: AnalyticsParams
+): Promise<AveragePriceData[]> => {
+  const response = await api.get<{
+    store_id: string;
+    product_type: string;
+    window_hours: number;
+    count: number;
+    data: Array<{
+      window_start: string;
+      avg_price: number;
+      product_count: number;
+    }>;
+  }>(
+    `/analytics/stores/${storeId}/product-types/${encodeURIComponent(productType)}/average-price`,
+    {
+      params: {
+        start_date: params.startDate.toISOString(),
+        end_date: params.endDate.toISOString(),
+        window_hours: params.windowHours || 24,
+      },
+    }
+  );
+
   // Transform backend format to frontend format
   return response.data.data.map(item => ({
     timestamp: new Date(item.window_start),

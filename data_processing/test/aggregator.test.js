@@ -12,12 +12,18 @@ import {
   createHourlyTagAvgCollection,
   createHourlyTagAvgIndexes,
   createHourlyStoreTagAvgCollection,
-  createHourlyStoreTagAvgIndexes
+  createHourlyStoreTagAvgIndexes,
+  createHourlyProductTypeAvgCollection,
+  createHourlyProductTypeAvgIndexes,
+  createHourlyStoreProductTypeAvgCollection,
+  createHourlyStoreProductTypeAvgIndexes
 } from '../src/database/analytics-schema.js';
 import {
   aggregateStoreAverages,
   aggregateTagAverages,
-  aggregateStoreTagAverages
+  aggregateStoreTagAverages,
+  aggregateProductTypeAverages,
+  aggregateStoreProductTypeAverages
 } from '../src/services/aggregator.js';
 
 // Helper to clean up test data
@@ -27,6 +33,8 @@ async function cleanupTestData() {
   await db.collection('hourly_store_avg').deleteMany({});
   await db.collection('hourly_tag_avg').deleteMany({});
   await db.collection('hourly_store_tag_avg').deleteMany({});
+  await db.collection('hourly_product_type_avg').deleteMany({});
+  await db.collection('hourly_store_product_type_avg').deleteMany({});
 }
 
 // Helper to insert test price snapshots
@@ -38,7 +46,7 @@ async function insertPriceSnapshots(snapshots) {
 test('Aggregator Tests', async (t) => {
   await connect();
   await initializeIndexes();
-  
+
   // Set up collections
   await dropPriceSnapshotsCollection();
   await createPriceSnapshotsCollection();
@@ -49,7 +57,11 @@ test('Aggregator Tests', async (t) => {
   await createHourlyTagAvgIndexes();
   await createHourlyStoreTagAvgCollection();
   await createHourlyStoreTagAvgIndexes();
-  
+  await createHourlyProductTypeAvgCollection();
+  await createHourlyProductTypeAvgIndexes();
+  await createHourlyStoreProductTypeAvgCollection();
+  await createHourlyStoreProductTypeAvgIndexes();
+
   t.after(async () => {
     await cleanupTestData();
     await close();
@@ -760,6 +772,364 @@ test('Aggregator Tests', async (t) => {
     
     assert.strictEqual(store1Result.avg_price, 100.00);
     assert.strictEqual(store2Result.avg_price, 200.00);
+  });
+
+  // Product Type Averages Tests
+  await t.test('groups snapshots by product_type across all stores', async () => {
+    await cleanupTestData();
+
+    const store1Id = new ObjectId();
+    const store2Id = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: store1Id, product_id: 1, variant_id: 1, product_type: 'T-Shirt', tags: [] },
+        store_name: 'Store 1',
+        price: 20.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: store2Id, product_id: 2, variant_id: 2, product_type: 'T-Shirt', tags: [] },
+        store_name: 'Store 2',
+        price: 30.00
+      }
+    ]);
+
+    await aggregateProductTypeAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_product_type_avg').findOne({ product_type: 'T-Shirt' });
+
+    assert.ok(result);
+    assert.strictEqual(result.avg_price, 25.00); // (20 + 30) / 2
+    assert.strictEqual(result.store_count, 2); // 2 different stores
+  });
+
+  await t.test('calculates average price per product_type', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, product_type: 'Hoodie', tags: [] },
+        store_name: 'Test Store',
+        price: 40.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: storeId, product_id: 2, variant_id: 2, product_type: 'Hoodie', tags: [] },
+        store_name: 'Test Store',
+        price: 50.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:45:00Z'),
+        metadata: { store_id: storeId, product_id: 3, variant_id: 3, product_type: 'Hoodie', tags: [] },
+        store_name: 'Test Store',
+        price: 60.00
+      }
+    ]);
+
+    await aggregateProductTypeAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_product_type_avg').findOne({ product_type: 'Hoodie' });
+
+    assert.strictEqual(result.avg_price, 50.00); // (40 + 50 + 60) / 3
+  });
+
+  await t.test('counts unique products and stores per product_type', async () => {
+    await cleanupTestData();
+
+    const store1Id = new ObjectId();
+    const store2Id = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: store1Id, product_id: 1, variant_id: 1, product_type: 'Jacket', tags: [] },
+        store_name: 'Store 1',
+        price: 100.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: store1Id, product_id: 1, variant_id: 2, product_type: 'Jacket', tags: [] },
+        store_name: 'Store 1',
+        price: 110.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:45:00Z'),
+        metadata: { store_id: store2Id, product_id: 2, variant_id: 3, product_type: 'Jacket', tags: [] },
+        store_name: 'Store 2',
+        price: 120.00
+      }
+    ]);
+
+    await aggregateProductTypeAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_product_type_avg').findOne({ product_type: 'Jacket' });
+
+    assert.strictEqual(result.product_count, 2); // 2 unique products
+    assert.strictEqual(result.store_count, 2); // 2 unique stores
+  });
+
+  await t.test('writes to hourly_product_type_avg with window_start', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, product_type: 'Shoes', tags: [] },
+        store_name: 'Test Store',
+        price: 80.00
+      }
+    ]);
+
+    await aggregateProductTypeAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_product_type_avg').findOne({ product_type: 'Shoes' });
+
+    assert.ok(result);
+    assert.deepStrictEqual(result.window_start, windowStart);
+    assert.deepStrictEqual(result.window_end, windowEnd);
+  });
+
+  await t.test('handles products without product_type (skips)', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, tags: [] },
+        store_name: 'Test Store',
+        price: 50.00
+      }
+    ]);
+
+    const count = await aggregateProductTypeAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 0); // No product types to aggregate
+  });
+
+  await t.test('handles multiple product types in same window', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, product_type: 'Hat', tags: [] },
+        store_name: 'Test Store',
+        price: 15.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: storeId, product_id: 2, variant_id: 2, product_type: 'Scarf', tags: [] },
+        store_name: 'Test Store',
+        price: 25.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:45:00Z'),
+        metadata: { store_id: storeId, product_id: 3, variant_id: 3, product_type: 'Gloves', tags: [] },
+        store_name: 'Test Store',
+        price: 35.00
+      }
+    ]);
+
+    const count = await aggregateProductTypeAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 3);
+  });
+
+  // Store-Product-Type Averages Tests
+  await t.test('groups snapshots by store_id + product_type', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, product_type: 'Shirt', tags: [] },
+        store_name: 'Test Store',
+        price: 30.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: storeId, product_id: 2, variant_id: 2, product_type: 'Pants', tags: [] },
+        store_name: 'Test Store',
+        price: 50.00
+      }
+    ]);
+
+    const count = await aggregateStoreProductTypeAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 2); // 2 store-product-type combinations
+  });
+
+  await t.test('calculates average price per store-product-type pair', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, product_type: 'Dress', tags: [] },
+        store_name: 'Test Store',
+        price: 60.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: storeId, product_id: 2, variant_id: 2, product_type: 'Dress', tags: [] },
+        store_name: 'Test Store',
+        price: 80.00
+      }
+    ]);
+
+    await aggregateStoreProductTypeAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_store_product_type_avg').findOne({
+      store_id: storeId,
+      product_type: 'Dress'
+    });
+
+    assert.strictEqual(result.avg_price, 70.00);
+  });
+
+  await t.test('counts unique products per store-product-type pair', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, product_type: 'Sweater', tags: [] },
+        store_name: 'Test Store',
+        price: 45.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 2, product_type: 'Sweater', tags: [] },
+        store_name: 'Test Store',
+        price: 50.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:45:00Z'),
+        metadata: { store_id: storeId, product_id: 2, variant_id: 3, product_type: 'Sweater', tags: [] },
+        store_name: 'Test Store',
+        price: 55.00
+      }
+    ]);
+
+    await aggregateStoreProductTypeAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_store_product_type_avg').findOne({
+      store_id: storeId,
+      product_type: 'Sweater'
+    });
+
+    assert.strictEqual(result.product_count, 2); // 2 unique products
+  });
+
+  await t.test('writes to hourly_store_product_type_avg with window_start', async () => {
+    await cleanupTestData();
+
+    const storeId = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: storeId, product_id: 1, variant_id: 1, product_type: 'Coat', tags: [] },
+        store_name: 'Test Store',
+        price: 120.00
+      }
+    ]);
+
+    await aggregateStoreProductTypeAverages(windowStart, windowEnd);
+
+    const db = getDb();
+    const result = await db.collection('hourly_store_product_type_avg').findOne({
+      store_id: storeId,
+      product_type: 'Coat'
+    });
+
+    assert.ok(result);
+    assert.deepStrictEqual(result.window_start, windowStart);
+    assert.deepStrictEqual(result.window_end, windowEnd);
+  });
+
+  await t.test('handles same product_type in different stores (separate documents)', async () => {
+    await cleanupTestData();
+
+    const store1Id = new ObjectId();
+    const store2Id = new ObjectId();
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    await insertPriceSnapshots([
+      {
+        timestamp: new Date('2024-01-01T10:15:00Z'),
+        metadata: { store_id: store1Id, product_id: 1, variant_id: 1, product_type: 'Sneakers', tags: [] },
+        store_name: 'Store 1',
+        price: 90.00
+      },
+      {
+        timestamp: new Date('2024-01-01T10:30:00Z'),
+        metadata: { store_id: store2Id, product_id: 2, variant_id: 2, product_type: 'Sneakers', tags: [] },
+        store_name: 'Store 2',
+        price: 110.00
+      }
+    ]);
+
+    const count = await aggregateStoreProductTypeAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 2); // 2 separate store-product-type combinations
+
+    const db = getDb();
+    const store1Result = await db.collection('hourly_store_product_type_avg').findOne({
+      store_id: store1Id,
+      product_type: 'Sneakers'
+    });
+    const store2Result = await db.collection('hourly_store_product_type_avg').findOne({
+      store_id: store2Id,
+      product_type: 'Sneakers'
+    });
+
+    assert.strictEqual(store1Result.avg_price, 90.00);
+    assert.strictEqual(store2Result.avg_price, 110.00);
   });
 });
 

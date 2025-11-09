@@ -1,6 +1,7 @@
 import { pollStore, pollAllStores } from '../services/poller.js';
 import { getDb } from '../database/connection.js';
 import { ObjectId } from 'mongodb';
+import { runAggregations } from '../services/scheduler.js';
 
 /**
  * Manually trigger polling for a specific store
@@ -33,6 +34,23 @@ export async function triggerStorePoll(req, res) {
     console.log(`\n📡 Manual poll triggered for store: ${store.store_name}`);
     const result = await pollStore(store);
 
+    // Immediately run aggregations for the current hour window
+    const windowStart = new Date();
+    windowStart.setMinutes(0, 0, 0);
+    const windowEnd = new Date(windowStart);
+    windowEnd.setHours(windowEnd.getHours() + 1);
+
+    let aggregationResults;
+    try {
+      aggregationResults = await runAggregations(windowStart, windowEnd);
+    } catch (aggregationError) {
+      console.error('Error running aggregations after store poll:', aggregationError);
+      aggregationResults = {
+        success: false,
+        error: aggregationError.message
+      };
+    }
+
     res.json({
       message: 'Store polling completed successfully',
       store_id: storeId,
@@ -41,7 +59,8 @@ export async function triggerStorePoll(req, res) {
         products_saved: result.saved,
         errors: result.errors,
         price_snapshots: result.snapshots
-      }
+      },
+      aggregation: aggregationResults
     });
   } catch (error) {
     console.error('Error in triggerStorePoll:', error);
@@ -61,6 +80,23 @@ export async function triggerAllStoresPoll(req, res) {
     console.log('\n📡 Manual poll triggered for all stores');
     const results = await pollAllStores();
 
+    // Immediately run aggregations for the current hour window
+    const windowStart = new Date();
+    windowStart.setMinutes(0, 0, 0);
+    const windowEnd = new Date(windowStart);
+    windowEnd.setHours(windowEnd.getHours() + 1);
+
+    let aggregationResults;
+    try {
+      aggregationResults = await runAggregations(windowStart, windowEnd);
+    } catch (aggregationError) {
+      console.error('Error running aggregations after polling:', aggregationError);
+      aggregationResults = {
+        success: false,
+        error: aggregationError.message
+      };
+    }
+
     res.json({
       message: 'All stores polling completed successfully',
       results: {
@@ -68,7 +104,8 @@ export async function triggerAllStoresPoll(req, res) {
         successful_stores: results.successfulStores,
         failed_stores: results.failedStores,
         total_products: results.totalProducts
-      }
+      },
+      aggregation: aggregationResults
     });
   } catch (error) {
     console.error('Error in triggerAllStoresPoll:', error);

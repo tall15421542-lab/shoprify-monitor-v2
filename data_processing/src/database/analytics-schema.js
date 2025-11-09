@@ -70,7 +70,19 @@ export async function createPriceSnapshotsIndexes() {
     { timestamp: 1, 'metadata.store_id': 1, 'metadata.tags': 1 },
     { name: 'timestamp_store_id_tags_idx' }
   );
-  
+
+  // Compound index on timestamp + product_type
+  await collection.createIndex(
+    { timestamp: 1, 'metadata.product_type': 1 },
+    { name: 'timestamp_product_type_idx' }
+  );
+
+  // Compound index on timestamp + store_id + product_type
+  await collection.createIndex(
+    { timestamp: 1, 'metadata.store_id': 1, 'metadata.product_type': 1 },
+    { name: 'timestamp_store_id_product_type_idx' }
+  );
+
   console.log('Created indexes on price_snapshots collection');
 }
 
@@ -163,14 +175,80 @@ export async function createHourlyStoreTagAvgCollection() {
 export async function createHourlyStoreTagAvgIndexes() {
   const db = getDb();
   const collection = db.collection('hourly_store_tag_avg');
-  
+
   // Compound index on store_id + tag + window_start (for unique constraint and queries)
   await collection.createIndex(
     { store_id: 1, tag: 1, window_start: 1 },
     { name: 'store_id_tag_window_start_idx', unique: true }
   );
-  
+
   console.log('Created indexes on hourly_store_tag_avg collection');
+}
+
+/**
+ * Create hourly_product_type_avg collection for pre-aggregated product type averages
+ */
+export async function createHourlyProductTypeAvgCollection() {
+  const db = getDb();
+
+  // Check if collection already exists
+  const collections = await db.listCollections({ name: 'hourly_product_type_avg' }).toArray();
+  if (collections.length > 0) {
+    console.log('hourly_product_type_avg collection already exists');
+    return;
+  }
+
+  await db.createCollection('hourly_product_type_avg');
+  console.log('Created hourly_product_type_avg collection');
+}
+
+/**
+ * Create indexes on hourly_product_type_avg collection
+ */
+export async function createHourlyProductTypeAvgIndexes() {
+  const db = getDb();
+  const collection = db.collection('hourly_product_type_avg');
+
+  // Compound index on product_type + window_start (for unique constraint and queries)
+  await collection.createIndex(
+    { product_type: 1, window_start: 1 },
+    { name: 'product_type_window_start_idx', unique: true }
+  );
+
+  console.log('Created indexes on hourly_product_type_avg collection');
+}
+
+/**
+ * Create hourly_store_product_type_avg collection for pre-aggregated store-product-type averages
+ */
+export async function createHourlyStoreProductTypeAvgCollection() {
+  const db = getDb();
+
+  // Check if collection already exists
+  const collections = await db.listCollections({ name: 'hourly_store_product_type_avg' }).toArray();
+  if (collections.length > 0) {
+    console.log('hourly_store_product_type_avg collection already exists');
+    return;
+  }
+
+  await db.createCollection('hourly_store_product_type_avg');
+  console.log('Created hourly_store_product_type_avg collection');
+}
+
+/**
+ * Create indexes on hourly_store_product_type_avg collection
+ */
+export async function createHourlyStoreProductTypeAvgIndexes() {
+  const db = getDb();
+  const collection = db.collection('hourly_store_product_type_avg');
+
+  // Compound index on store_id + product_type + window_start (for unique constraint and queries)
+  await collection.createIndex(
+    { store_id: 1, product_type: 1, window_start: 1 },
+    { name: 'store_id_product_type_window_start_idx', unique: true }
+  );
+
+  console.log('Created indexes on hourly_store_product_type_avg collection');
 }
 
 /**
@@ -185,6 +263,10 @@ export async function initializeAnalyticsSchema() {
   await createHourlyTagAvgIndexes();
   await createHourlyStoreTagAvgCollection();
   await createHourlyStoreTagAvgIndexes();
+  await createHourlyProductTypeAvgCollection();
+  await createHourlyProductTypeAvgIndexes();
+  await createHourlyStoreProductTypeAvgCollection();
+  await createHourlyStoreProductTypeAvgIndexes();
   console.log('Analytics schema initialization complete');
 }
 

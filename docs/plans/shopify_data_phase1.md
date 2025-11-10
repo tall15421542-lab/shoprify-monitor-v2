@@ -1,4 +1,16 @@
 # Shopify Data Collection - Phase 1 Implementation Plan
+## Prompt
+### Requirement
+1. Given a shopify website, poll the product data into the database in raw data
+2. Raw data will later be transformed to support complext query
+
+### Example URL
+- https://www.mous.co/
+
+### Tips
+- The product data is in the {URL}/products.json?limit={Integer}&page={Integer}, example https://www.mous.co/products.json?limit=250&page=1
+- Write very simple, minimum code that only implement the requirement
+
 
 ## Overview
 Poll Shopify product data from multiple stores and save data to document database with embedded price history.
@@ -167,107 +179,7 @@ parse_product(product_json, store_id):
   Return: {product_data, variants_data[]}
 ```
 
-### 3. Storage Function
-```javascript
-save_to_db(product_data, variants_data, store_id):
-  current_time = new Date()
-
-  // Build variants array with price history appended
-  variants_with_history = variants_data.map(variant => {
-    return {
-      variant_id: variant.variant_id,
-      variant_title: variant.variant_title,
-      current_price: variant.price,
-      image_url: variant.image_url,
-      // Append new price to history array
-      price_history_entry: {
-        price: variant.price,
-        recorded_at: current_time
-      }
-    }
-  })
-
-  // UPSERT product document
-  db.products.updateOne(
-    {
-      product_id: product_data.product_id,
-      store_id: store_id
-    },
-    {
-      $set: {
-        handle: product_data.handle,
-        title: product_data.title,
-        product_type: product_data.product_type,
-        vendor: product_data.vendor,
-        tags: product_data.tags,
-        main_image_url: product_data.main_image_url,
-        created_at: product_data.created_at,
-        updated_at: product_data.updated_at,
-        last_polled_at: current_time,
-        raw_data: product_data.raw_data
-      },
-      $set: {
-        // Update each variant's current state
-        "variants.$[elem].variant_title": variant.variant_title,
-        "variants.$[elem].current_price": variant.price,
-        "variants.$[elem].image_url": variant.image_url
-      },
-      $push: {
-        // Append price history for each variant
-        "variants.$[elem].price_history": {
-          price: variant.price,
-          recorded_at: current_time
-        }
-      }
-    },
-    {
-      upsert: true,
-      arrayFilters: [{ "elem.variant_id": variant.variant_id }]
-    }
-  )
-
-  // For new variants not in the document, add them
-  for (variant of variants_data) {
-    db.products.updateOne(
-      {
-        product_id: product_data.product_id,
-        store_id: store_id,
-        "variants.variant_id": { $ne: variant.variant_id }
-      },
-      {
-        $push: {
-          variants: {
-            variant_id: variant.variant_id,
-            variant_title: variant.variant_title,
-            current_price: variant.price,
-            image_url: variant.image_url,
-            price_history: [
-              {
-                price: variant.price,
-                recorded_at: current_time
-              }
-            ]
-          }
-        }
-      }
-    )
-  }
-```
-
-### 4. Store Management
-```javascript
-get_active_stores():
-  - stores = db.stores.find({ active: true })
-  - Return list of stores to poll
-
-update_last_polled(store_id):
-  - db.stores.updateOne(
-      { _id: store_id },
-      { $set: { last_polled_at: new Date() } }
-    )
-```
-
-### 5. Main Polling Loop
+### 3. Main Polling Loop
 ```
 poll_all_stores():
   - stores = get_active_stores()

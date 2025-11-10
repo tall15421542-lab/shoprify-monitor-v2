@@ -12,6 +12,10 @@ vi.mock('../../../services/api', () => ({
 
 // Mock useNavigate
 const mockNavigate = vi.fn();
+vi.mock('../../monitoring/MonitoringSubscribeButton', () => ({
+  __esModule: true,
+  default: ({ label }: { label: string }) => <button type="button">{label}</button>,
+}));
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
@@ -51,8 +55,8 @@ describe('StoreCard', () => {
     expect(screen.getByText('Test Store')).toBeInTheDocument();
     expect(screen.getByText('test.myshopify.com')).toBeInTheDocument();
     expect(screen.getByText('100 products')).toBeInTheDocument();
-    expect(screen.getByText('Every 60h')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Every 1 hour')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /subscribe/i })).toBeInTheDocument();
   });
 
   it('navigates to products page when card is clicked', () => {

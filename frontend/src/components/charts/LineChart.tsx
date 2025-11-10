@@ -71,12 +71,29 @@ function LineChart({ title, series, emptyMessage }: LineChartProps) {
       });
     });
 
-    return Array.from(pointMap.values())
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .map((entry) => ({
+    const sortedEntries = Array.from(pointMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+    let lastDateKey: string | null = null;
+
+    return sortedEntries.map((entry) => {
+      const { rawDate } = entry;
+      const dateKey = `${rawDate.getFullYear()}-${String(rawDate.getMonth() + 1).padStart(2, '0')}-${String(
+        rawDate.getDate()
+      ).padStart(2, '0')}`;
+      const showDateHeader = lastDateKey !== dateKey;
+      lastDateKey = dateKey;
+
+      const dateDisplay = rawDate.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+      const timeDisplay = rawDate.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+
+      return {
         ...entry,
-        dateLabel: entry.rawDate.toLocaleDateString(),
-      }));
+        dateLabel: showDateHeader ? `${dateDisplay} ${timeDisplay}` : timeDisplay,
+      };
+    });
   }, [resolvedSeries, hasData]);
 
   if (!hasData) {

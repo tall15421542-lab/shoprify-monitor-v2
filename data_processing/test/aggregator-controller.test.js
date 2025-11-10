@@ -46,6 +46,8 @@ describe('Aggregator Controller Tests', () => {
     await db.collection('hourly_store_avg').deleteMany({});
     await db.collection('hourly_tag_avg').deleteMany({});
     await db.collection('hourly_store_tag_avg').deleteMany({});
+    await db.collection('hourly_product_type_avg').deleteMany({});
+    await db.collection('hourly_store_product_type_avg').deleteMany({});
   });
 
   describe('POST /api/aggregate/current', () => {
@@ -65,6 +67,8 @@ describe('Aggregator Controller Tests', () => {
       assert.ok(typeof data.results.store_averages === 'number');
       assert.ok(typeof data.results.tag_averages === 'number');
       assert.ok(typeof data.results.store_tag_averages === 'number');
+      assert.ok(typeof data.results.product_type_averages === 'number');
+      assert.ok(typeof data.results.store_product_type_averages === 'number');
     });
 
     it('should return valid time window for current hour', async () => {
@@ -101,6 +105,8 @@ describe('Aggregator Controller Tests', () => {
       assert.strictEqual(data.results.store_averages, 0);
       assert.strictEqual(data.results.tag_averages, 0);
       assert.strictEqual(data.results.store_tag_averages, 0);
+      assert.strictEqual(data.results.product_type_averages, 0);
+      assert.strictEqual(data.results.store_product_type_averages, 0);
     });
   });
 
@@ -223,7 +229,8 @@ describe('Aggregator Controller Tests', () => {
             store_id: storeId,
             product_id: productId,
             variant_id: variantId,
-            tags: ['test-tag']
+            tags: ['test-tag'],
+            product_type: 'Test Type'
           },
           store_name: 'Test Store',
           price: 100.00
@@ -234,7 +241,8 @@ describe('Aggregator Controller Tests', () => {
             store_id: storeId,
             product_id: productId,
             variant_id: variantId + 1,
-            tags: ['test-tag']
+            tags: ['test-tag'],
+            product_type: 'Test Type'
           },
           store_name: 'Test Store',
           price: 200.00
@@ -259,6 +267,8 @@ describe('Aggregator Controller Tests', () => {
       assert.strictEqual(data.results.store_averages, 1); // 1 store
       assert.strictEqual(data.results.tag_averages, 1); // 1 tag
       assert.strictEqual(data.results.store_tag_averages, 1); // 1 store-tag combo
+      assert.strictEqual(data.results.product_type_averages, 1); // 1 product type
+      assert.strictEqual(data.results.store_product_type_averages, 1); // 1 store-product_type combo
     });
   });
 

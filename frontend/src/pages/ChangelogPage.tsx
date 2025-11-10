@@ -1,137 +1,134 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStores } from '../hooks/useStores';
-import { useStoreProducts } from '../hooks/useProducts';
-import { useProductChangelogs, useStoreChangelogs, useTagChangelogs, useStoreTagChangelogs } from '../hooks/useChangelog';
-import ChangelogTable from '../components/changelog/ChangelogTable';
-import ChangelogFilters from '../components/changelog/ChangelogFilters';
+import { useMarkMonitoringChangeLogsRead, useMonitoringChangeLogs } from '../hooks/useMonitoringChangeLogs';
+import { usePageVisibility } from '../hooks/usePageVisibility';
+import MonitoringChangeLogTable from '../components/monitoring/MonitoringChangeLogTable';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
+import type { MonitoringChangeLogEntry } from '../types';
 
 function ChangelogPage() {
-  // Filter states
-  const [selectedStoreId, setSelectedStoreId] = useState<string>('');
-  const [selectedTag, setSelectedTag] = useState<string>('');
-  const [startDate, setStartDate] = useState<Date>(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-  const [endDate, setEndDate] = useState<Date>(new Date());
-
-  // Fetch stores
+  const navigate = useNavigate();
+  const params = useMemo(() => ({ limit: 200, offset: 0 }), []);
   const { data: stores, isLoading: storesLoading, error: storesError } = useStores();
+  const { mutateAsync: acknowledgeChangeLogs } = useMarkMonitoringChangeLogsRead();
+  const acknowledgedIdsRef = useRef<Set<string>>(new Set());
+  const [highlightedEntryIds, setHighlightedEntryIds] = useState<Set<string>>(new Set());
+  const isPageVisible = usePageVisibility();
+  const {
+    data: changeLogResponse,
+    isLoading: changeLogsLoading,
+    error: changeLogsError,
+  } = useMonitoringChangeLogs(params);
 
-  // Fetch products for the selected store to get available tags
-  const { data: products } = useStoreProducts(selectedStoreId || undefined);
+  useEffect(() => {
+    if (!isPageVisible || !changeLogResponse || changeLogsLoading) {
+      return;
+    }
 
-  // Extract unique tags from products
-  const availableTags = useMemo(() => {
-    if (!products) return [];
-    const tags = new Set<string>();
-    products.forEach((product) => {
-      product.tags?.forEach((tag) => tags.add(tag));
+    const unreadEntries = changeLogResponse.entries.filter((entry) => !entry.readAt);
+    if (unreadEntries.length === 0) {
+      return;
+    }
+
+    const idsToAcknowledge = unreadEntries
+      .map((entry) => entry.id)
+      .filter((id) => !acknowledgedIdsRef.current.has(id));
+
+    if (idsToAcknowledge.length === 0) {
+      return;
+    }
+
+    setHighlightedEntryIds((prev) => {
+      const next = new Set(prev);
+      idsToAcknowledge.forEach((id) => next.add(id));
+      return next;
     });
-    return Array.from(tags).sort();
-  }, [products]);
 
-  // Changelog query parameters
-  const changelogParams = {
-    startDate,
-    endDate,
-    limit: 100,
-  };
+    idsToAcknowledge.forEach((id) => acknowledgedIdsRef.current.add(id));
 
-  // Determine which changelog query to use based on filters
-  const useProductQuery = !selectedStoreId && !selectedTag;
-  const useStoreQuery = selectedStoreId && !selectedTag;
-  const useTagQuery = !selectedStoreId && selectedTag;
-  const useStoreTagQuery = selectedStoreId && selectedTag;
+    void acknowledgeChangeLogs(idsToAcknowledge).catch(() => {
+      idsToAcknowledge.forEach((id) => acknowledgedIdsRef.current.delete(id));
+    });
+  }, [acknowledgeChangeLogs, changeLogResponse, changeLogsLoading, isPageVisible]);
 
-  const { data: productData, isLoading: productLoading, error: productError } = useProductChangelogs(
-    useProductQuery ? changelogParams : { ...changelogParams, limit: 0 }
+  const storeMap = useMemo(() => {
+    if (!stores) {
+      return new Map<string, string>();
+    }
+    return new Map(stores.map((store) => [store._id, store.name]));
+  }, [stores]);
+
+  const entries = changeLogResponse?.entries ?? [];
+  const sortedEntries = useMemo(
+    () =>
+      [...entries].sort(
+        (a, b) => b.detectedAt.getTime() - a.detectedAt.getTime()
+      ),
+    [entries]
   );
 
-  const { data: storeData, isLoading: storeLoading, error: storeError } = useStoreChangelogs(
-    selectedStoreId || 'skip',
-    useStoreQuery ? changelogParams : { ...changelogParams, limit: 0 }
+  const handleEntryClick = useCallback(
+    (entry: MonitoringChangeLogEntry) => {
+      const search = new URLSearchParams({
+        subscriptionId: entry.subscriptionId,
+        changeLogId: entry.id,
+      });
+      navigate(`/subscriptions?${search.toString()}`);
+    },
+    [navigate]
   );
 
-  const { data: tagData, isLoading: tagLoading, error: tagError } = useTagChangelogs(
-    selectedTag || 'skip',
-    useTagQuery ? changelogParams : { ...changelogParams, limit: 0 }
-  );
-
-  const { data: storeTagData, isLoading: storeTagLoading, error: storeTagError } = useStoreTagChangelogs(
-    selectedStoreId || 'skip',
-    selectedTag || 'skip',
-    useStoreTagQuery ? changelogParams : { ...changelogParams, limit: 0 }
-  );
-
-  // Determine which data to display
-  const displayData = useProductQuery
-    ? productData
-    : useStoreQuery
-    ? storeData
-    : useTagQuery
-    ? tagData
-    : useStoreTagQuery
-    ? storeTagData
-    : [];
-
-  const isLoading = productLoading || storeLoading || tagLoading || storeTagLoading || storesLoading;
-  const hasError = productError || storeError || tagError || storeTagError || storesError;
-
-  if (storesLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <LoadingSpinner size={48} />
-      </div>
-    );
-  }
-
-  if (storesError) {
-    return (
-      <div>
-        <h1 className="text-3xl font-bold mb-6">Changelog</h1>
-        <ErrorMessage message="Failed to load stores. Please refresh the page." />
-      </div>
-    );
-  }
+  const latestTimestamp = sortedEntries[0]?.detectedAt ?? null;
+  const totalEntries = changeLogResponse?.count ?? sortedEntries.length;
+  const isLoading = changeLogsLoading || (storesLoading && !stores);
 
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Price Change History</h1>
+        <h1 className="text-3xl font-bold mb-2">Monitoring Change Log</h1>
         <p className="text-gray-600">
-          Track all price changes across your monitored stores and products
+          Review the most recent subscription-driven changes across all monitored scopes. Entries are ordered by detected time (newest first).
         </p>
       </div>
 
-      <div className="space-y-6">
-        <ChangelogFilters
-          stores={stores || []}
-          availableTags={availableTags}
-          selectedStoreId={selectedStoreId}
-          selectedTag={selectedTag}
-          startDate={startDate}
-          endDate={endDate}
-          onStoreChange={(storeId) => {
-            setSelectedStoreId(storeId);
-            if (!storeId) setSelectedTag('');
-          }}
-          onTagChange={setSelectedTag}
-          onStartDateChange={setStartDate}
-          onEndDateChange={setEndDate}
-        />
-
-        {isLoading ? (
-          <div className="card">
-            <div className="flex justify-center py-12">
-              <LoadingSpinner />
-            </div>
+      <div className="card mb-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm text-gray-600">
+              Showing {sortedEntries.length} change log {sortedEntries.length === 1 ? 'entry' : 'entries'}.
+              {totalEntries > sortedEntries.length && (
+                <> (Total available: {totalEntries})</>
+              )}
+            </p>
+            <p className="text-xs text-gray-500">
+              Most recent update:{' '}
+              {latestTimestamp ? latestTimestamp.toLocaleString() : 'N/A'}
+            </p>
+            {storesError && (
+              <p className="text-xs text-amber-600 mt-2">
+                Unable to load store names. Displaying scope identifiers instead.
+              </p>
+            )}
           </div>
-        ) : hasError ? (
-          <ErrorMessage message="Failed to load changelog data. Please try again." />
-        ) : (
-          <ChangelogTable entries={displayData || []} />
-        )}
+        </div>
       </div>
+
+      {isLoading ? (
+        <div className="flex justify-center items-center min-h-[240px]">
+          <LoadingSpinner size={48} />
+        </div>
+      ) : changeLogsError ? (
+        <ErrorMessage message="Failed to load monitoring change logs. Please try again." />
+      ) : (
+        <MonitoringChangeLogTable
+          entries={sortedEntries}
+          storeNameLookup={(storeId) => storeMap.get(storeId)}
+          highlightedEntryIds={highlightedEntryIds}
+          onEntryClick={handleEntryClick}
+        />
+      )}
     </div>
   );
 }

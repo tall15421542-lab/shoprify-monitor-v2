@@ -18,7 +18,7 @@ function PriceHistoryModal({ isOpen, onClose, product }: PriceHistoryModalProps)
   // Default to last 30 days
   const [dateRange] = useState({
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-    endDate: new Date(),
+    endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
 
   const [selectedVariants, setSelectedVariants] = useState<Set<string>>(new Set());
@@ -147,39 +147,80 @@ function PriceHistoryModal({ isOpen, onClose, product }: PriceHistoryModalProps)
 
   const chartData = useMemo(() => {
     if (!priceHistory?.byVariant) return [];
-    
-    // Get all unique timestamps across all variants
-    const allTimestamps = new Set<number>();
+
+    const dataByTimestamp = new Map<number, Record<string, any>>();
+
     priceHistory.byVariant.forEach(variant => {
       variant.priceHistory.forEach(entry => {
-        allTimestamps.add(entry.timestamp.getTime());
+        const timestamp = entry.timestamp.getTime();
+        const existingPoint = dataByTimestamp.get(timestamp);
+        const dataPoint =
+          existingPoint ??
+          {
+            timestamp,
+            rawDate: entry.timestamp,
+          };
+
+        dataPoint[variant.variantTitle] = entry.price;
+        dataByTimestamp.set(timestamp, dataPoint);
       });
     });
-    
-    // Sort timestamps
-    const sortedTimestamps = Array.from(allTimestamps).sort();
-    
-    // Build chart data with one entry per timestamp
-    return sortedTimestamps.map(timestamp => {
-      const dataPoint: any = {
-        date: new Date(timestamp).toLocaleDateString(),
-        time: new Date(timestamp).toLocaleTimeString(),
-        timestamp,
-      };
-      
-      // Add price for each variant at this timestamp
-      priceHistory.byVariant.forEach(variant => {
-        const entry = variant.priceHistory.find(
-          e => e.timestamp.getTime() === timestamp
-        );
-        if (entry) {
-          dataPoint[variant.variantTitle] = entry.price;
-        }
+
+    const sortedPoints = Array.from(dataByTimestamp.values()).sort(
+      (a, b) => (a.timestamp as number) - (b.timestamp as number)
+    );
+
+    let lastDateKey: string | null = null;
+
+    return sortedPoints.map((point) => {
+      const typedPoint = point as { timestamp: number } & Record<string, unknown>;
+      const rawDate =
+        typedPoint.rawDate instanceof Date ? typedPoint.rawDate : new Date(typedPoint.timestamp as number);
+      const dateKey = `${rawDate.getFullYear()}-${String(rawDate.getMonth() + 1).padStart(2, '0')}-${String(
+        rawDate.getDate()
+      ).padStart(2, '0')}`;
+      const showDateHeader = lastDateKey !== dateKey;
+      lastDateKey = dateKey;
+
+      const dateDisplay = rawDate.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+      const timeDisplay = rawDate.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
       });
-      
-      return dataPoint;
+
+      return {
+        ...typedPoint,
+        rawDate,
+        dateDisplay,
+        timeDisplay,
+        chartLabel: showDateHeader ? `${dateDisplay} ${timeDisplay}` : timeDisplay,
+      };
     });
   }, [priceHistory]);
+
+  const tickLabelLookup = useMemo(() => {
+    const map = new Map<number, string>();
+    chartData.forEach((entry) => {
+      const timestamp = (entry as { timestamp?: number }).timestamp;
+      if (typeof timestamp === 'number' && entry.chartLabel) {
+        map.set(timestamp, entry.chartLabel as string);
+      }
+    });
+    return map;
+  }, [chartData]);
+
+  const chartDomain = useMemo(() => {
+    if (chartData.length === 0) return undefined;
+    const timestamps = chartData.map(entry => entry.timestamp as number);
+    const minTimestamp = Math.min(...timestamps);
+    const maxTimestamp = Math.max(...timestamps);
+    const oneHourInMs = 60 * 60 * 1000;
+    return [
+      Math.max(0, minTimestamp - oneHourInMs),
+      maxTimestamp + oneHourInMs,
+    ] as [number, number];
+  }, [chartData]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Price History: ${product.title}`} size="5xl">
@@ -320,8 +361,19 @@ function PriceHistoryModal({ isOpen, onClose, product }: PriceHistoryModalProps)
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis
-                  dataKey="date"
+                  dataKey="timestamp"
+                  type="number"
+                  scale="time"
+                  domain={chartDomain ?? ['dataMin', 'dataMax']}
                   tick={{ fontSize: 12 }}
+                  tickFormatter={(value: number) =>
+                    tickLabelLookup.get(value) ??
+                    new Date(value).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
+                    })
+                  }
                   angle={-45}
                   textAnchor="end"
                   height={80}
@@ -336,10 +388,16 @@ function PriceHistoryModal({ isOpen, onClose, product }: PriceHistoryModalProps)
                       const data = payload[0].payload;
                       return (
                         <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-lg">
-                          <p className="font-semibold text-gray-900 mb-1">{label}</p>
-                          <p className="text-sm text-gray-600 mb-2">{data.time}</p>
+                          <p className="font-semibold text-gray-900 mb-1">{data.dateDisplay}</p>
+                          <p className="text-sm text-gray-600 mb-2">{data.timeDisplay}</p>
                           <div className="space-y-1">
-                            {payload.map((entry: any, index: number) => (
+                            {[...payload]
+                              .sort(
+                                (a: any, b: any) =>
+                                  (b?.value ?? Number.NEGATIVE_INFINITY) -
+                                  (a?.value ?? Number.NEGATIVE_INFINITY)
+                              )
+                              .map((entry: any, index: number) => (
                               <div key={index} className="flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-2">
                                   <div

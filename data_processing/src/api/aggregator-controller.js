@@ -1,7 +1,9 @@
-import { 
-  aggregateStoreAverages, 
-  aggregateTagAverages, 
-  aggregateStoreTagAverages 
+import {
+  aggregateStoreAverages,
+  aggregateTagAverages,
+  aggregateStoreTagAverages,
+  aggregateProductTypeAverages,
+  aggregateStoreProductTypeAverages
 } from '../services/aggregator.js';
 
 /**
@@ -48,6 +50,8 @@ export async function triggerAggregation(req, res) {
     const storeAvgCount = await aggregateStoreAverages(start, end);
     const tagAvgCount = await aggregateTagAverages(start, end);
     const storeTagAvgCount = await aggregateStoreTagAverages(start, end);
+    const productTypeAvgCount = await aggregateProductTypeAverages(start, end);
+    const storeProductTypeAvgCount = await aggregateStoreProductTypeAverages(start, end);
 
     res.json({
       message: 'Aggregation completed successfully',
@@ -58,7 +62,9 @@ export async function triggerAggregation(req, res) {
       results: {
         store_averages: storeAvgCount,
         tag_averages: tagAvgCount,
-        store_tag_averages: storeTagAvgCount
+        store_tag_averages: storeTagAvgCount,
+        product_type_averages: productTypeAvgCount,
+        store_product_type_averages: storeProductTypeAvgCount
       }
     });
   } catch (error) {
@@ -90,6 +96,8 @@ export async function triggerCurrentHourAggregation(req, res) {
     const storeAvgCount = await aggregateStoreAverages(windowStart, windowEnd);
     const tagAvgCount = await aggregateTagAverages(windowStart, windowEnd);
     const storeTagAvgCount = await aggregateStoreTagAverages(windowStart, windowEnd);
+    const productTypeAvgCount = await aggregateProductTypeAverages(windowStart, windowEnd);
+    const storeProductTypeAvgCount = await aggregateStoreProductTypeAverages(windowStart, windowEnd);
 
     res.json({
       message: 'Current hour aggregation completed successfully',
@@ -100,7 +108,9 @@ export async function triggerCurrentHourAggregation(req, res) {
       results: {
         store_averages: storeAvgCount,
         tag_averages: tagAvgCount,
-        store_tag_averages: storeTagAvgCount
+        store_tag_averages: storeTagAvgCount,
+        product_type_averages: productTypeAvgCount,
+        store_product_type_averages: storeProductTypeAvgCount
       }
     });
   } catch (error) {

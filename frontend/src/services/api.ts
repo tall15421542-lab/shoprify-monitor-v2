@@ -9,10 +9,22 @@ import type {
   AveragePriceData,
   ChangelogEntry,
   ChangelogParams,
+  MonitoringSubscription,
+  MonitoringScopeKey,
+  CreateMonitoringSubscriptionInput,
+  MonitoringChangeLogParams,
+  MonitoringChangeLogResponse,
+  MonitoringChangeLogEntry,
+  MonitoringScopeType,
+  MonitoringUnreadCounter,
 } from '../types';
 
+const env =
+  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ??
+  {};
+
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
+  env.VITE_API_BASE_URL ||
   'http://localhost:3000';
 
 const api = axios.create({
@@ -21,6 +33,140 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+function toScopeKeyPayload(scopeType: MonitoringScopeType, scope: MonitoringScopeKey) {
+  switch (scopeType) {
+    case 'product':
+      if (!scope.storeId || !scope.productId) {
+        throw new Error('Product subscriptions require storeId and productId');
+      }
+      return { store_id: scope.storeId, product_id: scope.productId };
+    case 'store':
+      if (!scope.storeId) {
+        throw new Error('Store subscriptions require storeId');
+      }
+      return { store_id: scope.storeId };
+    case 'product_type':
+      if (!scope.productType) {
+        throw new Error('Product type subscriptions require productType');
+      }
+      return { product_type: scope.productType };
+    case 'store_product_type':
+      if (!scope.storeId || !scope.productType) {
+        throw new Error('Store + product type subscriptions require storeId and productType');
+      }
+      return { store_id: scope.storeId, product_type: scope.productType };
+    default:
+      throw new Error(`Unsupported scope type: ${scopeType}`);
+  }
+}
+
+function mapScopeKey(scopeType: MonitoringScopeType, scopeKey: any): MonitoringScopeKey {
+  switch (scopeType) {
+    case 'product':
+      return {
+        storeId: scopeKey?.store_id ?? undefined,
+        productId: scopeKey?.product_id ?? undefined,
+      };
+    case 'store':
+      return {
+        storeId: scopeKey?.store_id ?? undefined,
+      };
+    case 'product_type':
+      return {
+        productType: scopeKey?.product_type ?? undefined,
+      };
+    case 'store_product_type':
+      return {
+        storeId: scopeKey?.store_id ?? undefined,
+        productType: scopeKey?.product_type ?? undefined,
+      };
+    default:
+      return {};
+  }
+}
+
+function mapMonitoringSubscription(raw: any): MonitoringSubscription {
+  return {
+    id: raw.id,
+    scopeType: raw.scope_type,
+    scope: mapScopeKey(raw.scope_type, raw.scope_key),
+    storeName: typeof raw.store_name === 'string' ? raw.store_name : undefined,
+    productName: typeof raw.product_name === 'string' ? raw.product_name : undefined,
+    changeType: raw.change_type,
+    intervalMinutes: raw.interval_minutes,
+    unreadCount: raw.unread_count ?? 0,
+    unreadUpdatedAt: raw.unread_updated_at ? new Date(raw.unread_updated_at) : null,
+    unreadChangeLogs: Array.isArray(raw.unread_change_logs)
+      ? raw.unread_change_logs.map(mapMonitoringChangeLogEntry)
+      : [],
+    createdAt: raw.created_at ? new Date(raw.created_at) : new Date(),
+    updatedAt: raw.updated_at ? new Date(raw.updated_at) : new Date(),
+  };
+}
+
+function mapMonitoringChangeLogEntry(raw: any): MonitoringChangeLogEntry {
+  return {
+    id: raw.id,
+    subscriptionId: raw.subscription_id,
+    scopeType: raw.scope_type,
+    scope: mapScopeKey(raw.scope_type, raw.scope_key),
+    storeName: typeof raw.store_name === 'string' ? raw.store_name : undefined,
+    productName: typeof raw.product_name === 'string' ? raw.product_name : undefined,
+    changeType: raw.change_type,
+    currentValue: typeof raw.current_value === 'number' ? raw.current_value : null,
+    previousValue: typeof raw.previous_value === 'number' ? raw.previous_value : null,
+    absoluteChange: typeof raw.absolute_change === 'number' ? raw.absolute_change : null,
+    percentageChange: typeof raw.percentage_change === 'number' ? raw.percentage_change : null,
+    detectedAt: raw.detected_at ? new Date(raw.detected_at) : new Date(),
+    readAt: raw.read_at ? new Date(raw.read_at) : null,
+    isBaseline: Boolean(raw.is_baseline),
+  };
+}
+
+function mapUnreadCounter(raw: any): MonitoringUnreadCounter {
+  return {
+    subscriptionId: raw.subscription_id,
+    unreadCount: raw.unread_count ?? 0,
+    updatedAt: raw.updated_at ? new Date(raw.updated_at) : null,
+  };
+}
+
+function mapStoreMonitoringFlags(monitoring: any | undefined) {
+  return {
+    store: {
+      subscribed: Boolean(monitoring?.store?.subscribed),
+    },
+  };
+}
+
+function mapProductTypeMonitoringFlags(monitoring: any | undefined) {
+  return {
+    productType: {
+      subscribed: Boolean(monitoring?.productType?.subscribed),
+    },
+    storeProductType: {
+      subscribed: Boolean(monitoring?.storeProductType?.subscribed),
+    },
+  };
+}
+
+function mapProductMonitoringFlags(monitoring: any | undefined) {
+  return {
+    store: {
+      subscribed: Boolean(monitoring?.store?.subscribed),
+    },
+    product: {
+      subscribed: Boolean(monitoring?.product?.subscribed),
+    },
+    productType: {
+      subscribed: Boolean(monitoring?.productType?.subscribed),
+    },
+    storeProductType: {
+      subscribed: Boolean(monitoring?.storeProductType?.subscribed),
+    },
+  };
+}
 
 // Store APIs
 export const getStores = async (): Promise<Store[]> => {
@@ -34,6 +180,7 @@ export const getStores = async (): Promise<Store[]> => {
     pollingInterval: store.poll_interval ?? store.polling_interval ?? 60,
     lastFetch: store.last_polled_at ? new Date(store.last_polled_at) : undefined,
     productCount: store.product_count,
+    monitoring: mapStoreMonitoringFlags(store.monitoring),
   }));
 };
 
@@ -57,6 +204,7 @@ export const addStore = async (data: AddStoreData): Promise<Store> => {
     pollingInterval: store.poll_interval ?? store.polling_interval ?? 60,
     lastFetch: store.last_polled_at ? new Date(store.last_polled_at) : undefined,
     productCount: store.product_count,
+    monitoring: mapStoreMonitoringFlags(store.monitoring),
   };
 };
 
@@ -72,6 +220,7 @@ export const getStore = async (storeId: string): Promise<Store> => {
     pollingInterval: store.poll_interval ?? store.polling_interval ?? 60,
     lastFetch: store.last_polled_at ? new Date(store.last_polled_at) : undefined,
     productCount: store.product_count,
+    monitoring: mapStoreMonitoringFlags(store.monitoring),
   };
 };
 
@@ -98,16 +247,72 @@ export const getStoreTags = async (storeId: string): Promise<Tag[]> => {
 
 // Product Type APIs
 export const getAllProductTypes = async (): Promise<ProductType[]> => {
-  const response = await api.get<{ count: number; product_types: ProductType[] }>('/product-types');
-  return response.data.product_types;
+  const response = await api.get<{ count: number; product_types: any[] }>('/product-types');
+  return response.data.product_types.map((productType) => ({
+    product_type: productType.product_type,
+    count: productType.count,
+    monitoring: mapProductTypeMonitoringFlags(productType.monitoring),
+  }));
 };
 
 export const getStoreProductTypes = async (storeId: string): Promise<ProductType[]> => {
-  const response = await api.get<{ store_id: string; count: number; product_types: ProductType[] }>(`/stores/${storeId}/product-types`);
-  return response.data.product_types;
+  const response = await api.get<{ store_id: string; count: number; product_types: any[] }>(`/stores/${storeId}/product-types`);
+  return response.data.product_types.map((productType) => ({
+    product_type: productType.product_type,
+    count: productType.count,
+    monitoring: mapProductTypeMonitoringFlags(productType.monitoring),
+  }));
 };
 
 // Product APIs
+const normalizePriceValue = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
+const getVariantLatestPrice = (variant: any): number => {
+  if (!variant) {
+    return 0;
+  }
+
+  const history = Array.isArray(variant.price_history) ? variant.price_history : [];
+  if (history.length > 0) {
+    const latestEntry = history[history.length - 1];
+    const latestPrice = normalizePriceValue(latestEntry?.price);
+    if (latestPrice !== null) {
+      return latestPrice;
+    }
+  }
+
+  const fallbackPrice = normalizePriceValue(variant.current_price);
+  return fallbackPrice ?? 0;
+};
+
+const getVariantPreviousPrice = (variant: any): number | undefined => {
+  if (!variant) {
+    return undefined;
+  }
+
+  const history = Array.isArray(variant.price_history) ? variant.price_history : [];
+  if (history.length > 1) {
+    const previousEntry = history[history.length - 2];
+    const previousPrice = normalizePriceValue(previousEntry?.price);
+    if (previousPrice !== null) {
+      return previousPrice;
+    }
+  }
+
+  return undefined;
+};
+
 export const getStoreProducts = async (storeId: string): Promise<Product[]> => {
   const response = await api.get<{ store_id: string; store_name: string; count: number; products: any[] }>(`/stores/${storeId}/products`);
   // Transform backend format to frontend format
@@ -122,23 +327,29 @@ export const getStoreProducts = async (storeId: string): Promise<Product[]> => {
 
     if (product.variants && product.variants.length > 0) {
       // Find the lowest current price variant for display
-      const lowestPriceVariant = product.variants.reduce((min: any, v: any) => 
-        v.current_price < min.current_price ? v : min
-      , product.variants[0]);
+      const lowestPriceVariant = product.variants.reduce((min: any, v: any) => {
+        const minPrice = getVariantLatestPrice(min);
+        const variantPrice = getVariantLatestPrice(v);
+        return variantPrice < minPrice ? v : min;
+      }, product.variants[0]);
       
-      currentPrice = lowestPriceVariant.current_price || 0;
+      currentPrice = getVariantLatestPrice(lowestPriceVariant);
       
       // Calculate average price change across ALL variants
       const variantChanges: Array<{ priceChange: number; priceChangePercent: number }> = [];
       
       product.variants.forEach((variant: any) => {
         if (variant.price_history && variant.price_history.length > 1) {
-          const currentVariantPrice = variant.current_price;
-          const previousVariantPrice = variant.price_history[variant.price_history.length - 2]?.price;
+          const currentVariantPrice = getVariantLatestPrice(variant);
+          const previousVariantPrice = getVariantPreviousPrice(variant);
           
-          if (previousVariantPrice !== undefined && currentVariantPrice !== previousVariantPrice) {
+          if (
+            previousVariantPrice !== undefined &&
+            currentVariantPrice !== previousVariantPrice
+          ) {
             const variantPriceChange = currentVariantPrice - previousVariantPrice;
-            const variantPriceChangePercent = (variantPriceChange / previousVariantPrice) * 100;
+            const variantPriceChangePercent =
+              previousVariantPrice !== 0 ? (variantPriceChange / previousVariantPrice) * 100 : 0;
             
             variantChanges.push({
               priceChange: variantPriceChange,
@@ -180,7 +391,7 @@ export const getStoreProducts = async (storeId: string): Promise<Product[]> => {
       variants: product.variants?.map((v: any) => ({
         id: v.variant_id?.toString() || '',
         title: v.variant_title,
-        price: v.current_price?.toString() || '0',
+        price: getVariantLatestPrice(v).toString(),
         sku: '',
         available: true,
       })) || [],
@@ -197,6 +408,7 @@ export const getStoreProducts = async (storeId: string): Promise<Product[]> => {
       hasVariantPriceDown,
       createdAt: new Date(product.created_at),
       updatedAt: new Date(product.updated_at),
+      monitoring: mapProductMonitoringFlags(product.monitoring),
     };
   });
 };
@@ -215,23 +427,29 @@ export const getProduct = async (productId: string): Promise<Product> => {
 
   if (product.variants && product.variants.length > 0) {
     // Find the lowest current price variant for display
-    const lowestPriceVariant = product.variants.reduce((min: any, v: any) => 
-      v.current_price < min.current_price ? v : min
-    , product.variants[0]);
+    const lowestPriceVariant = product.variants.reduce((min: any, v: any) => {
+      const minPrice = getVariantLatestPrice(min);
+      const variantPrice = getVariantLatestPrice(v);
+      return variantPrice < minPrice ? v : min;
+    }, product.variants[0]);
     
-    currentPrice = lowestPriceVariant.current_price || 0;
+    currentPrice = getVariantLatestPrice(lowestPriceVariant);
     
     // Calculate average price change across ALL variants
     const variantChanges: Array<{ priceChange: number; priceChangePercent: number }> = [];
     
     product.variants.forEach((variant: any) => {
       if (variant.price_history && variant.price_history.length > 1) {
-        const currentVariantPrice = variant.current_price;
-        const previousVariantPrice = variant.price_history[variant.price_history.length - 2]?.price;
+        const currentVariantPrice = getVariantLatestPrice(variant);
+        const previousVariantPrice = getVariantPreviousPrice(variant);
         
-        if (previousVariantPrice !== undefined && currentVariantPrice !== previousVariantPrice) {
+        if (
+          previousVariantPrice !== undefined &&
+          currentVariantPrice !== previousVariantPrice
+        ) {
           const variantPriceChange = currentVariantPrice - previousVariantPrice;
-          const variantPriceChangePercent = (variantPriceChange / previousVariantPrice) * 100;
+          const variantPriceChangePercent =
+            previousVariantPrice !== 0 ? (variantPriceChange / previousVariantPrice) * 100 : 0;
           
           variantChanges.push({
             priceChange: variantPriceChange,
@@ -274,7 +492,7 @@ export const getProduct = async (productId: string): Promise<Product> => {
     variants: product.variants?.map((v: any) => ({
       id: v.variant_id?.toString() || '',
       title: v.variant_title,
-      price: v.current_price?.toString() || '0',
+      price: getVariantLatestPrice(v).toString(),
       sku: '',
       available: true,
     })) || [],
@@ -291,6 +509,7 @@ export const getProduct = async (productId: string): Promise<Product> => {
     hasVariantPriceDown,
     createdAt: new Date(product.created_at),
     updatedAt: new Date(product.updated_at),
+    monitoring: mapProductMonitoringFlags(product.monitoring),
   };
 };
 
@@ -330,7 +549,7 @@ export const getProductPriceHistory = async (
     byVariant: response.data.variants.map(variant => ({
       variantId: variant.variant_id,
       variantTitle: variant.variant_title,
-      currentPrice: variant.current_price,
+      currentPrice: getVariantLatestPrice(variant),
       priceHistory: variant.price_history.map(entry => ({
         timestamp: new Date(entry.recorded_at),
         price: entry.price,
@@ -600,6 +819,100 @@ export const updateStore = async (storeId: string): Promise<UpdateResult> => {
   return {
     pollResult: pollResponse.data.results || {},
     aggregationResult: aggregationResponse.data.results || {},
+  };
+};
+
+// Monitoring Subscriptions APIs
+export const getMonitoringSubscriptions = async (): Promise<MonitoringSubscription[]> => {
+  const response = await api.get<{ count: number; subscriptions: any[] }>('/api/subscriptions');
+  return response.data.subscriptions.map(mapMonitoringSubscription);
+};
+
+export const createMonitoringSubscription = async (
+  input: CreateMonitoringSubscriptionInput
+): Promise<MonitoringSubscription> => {
+  const payload = {
+    scope_type: input.scopeType,
+    scope_key: toScopeKeyPayload(input.scopeType, input.scope),
+    change_type: input.changeType,
+    interval_minutes: input.intervalMinutes,
+  };
+  const response = await api.post('/api/subscriptions', payload);
+  return mapMonitoringSubscription(response.data);
+};
+
+export const updateMonitoringSubscription = async (
+  subscriptionId: string,
+  input: CreateMonitoringSubscriptionInput
+): Promise<MonitoringSubscription> => {
+  const payload = {
+    scope_type: input.scopeType,
+    scope_key: toScopeKeyPayload(input.scopeType, input.scope),
+    change_type: input.changeType,
+    interval_minutes: input.intervalMinutes,
+  };
+  const response = await api.patch(`/api/subscriptions/${subscriptionId}`, payload);
+  return mapMonitoringSubscription(response.data);
+};
+
+export const deleteMonitoringSubscription = async (subscriptionId: string): Promise<void> => {
+  await api.delete(`/api/subscriptions/${subscriptionId}`);
+};
+
+export const getMonitoringChangeLogs = async (
+  params: MonitoringChangeLogParams = {}
+): Promise<MonitoringChangeLogResponse> => {
+  const queryParams: Record<string, string | number> = {};
+
+  if (params.subscriptionId) {
+    queryParams.subscription_id = params.subscriptionId;
+  }
+  if (params.scopeType) {
+    queryParams.scope_type = params.scopeType;
+  }
+  if (params.readState) {
+    queryParams.read_state = params.readState;
+  }
+  if (params.since) {
+    queryParams.since = params.since.toISOString();
+  }
+  if (params.limit) {
+    queryParams.limit = params.limit;
+  }
+  if (params.offset) {
+    queryParams.offset = params.offset;
+  }
+
+  const response = await api.get<{
+    count: number;
+    limit: number;
+    offset: number;
+    entries: any[];
+    unread_counters: any[];
+  }>('/api/change-logs', {
+    params: queryParams,
+  });
+
+  return {
+    count: response.data.count,
+    limit: response.data.limit,
+    offset: response.data.offset,
+    entries: response.data.entries.map(mapMonitoringChangeLogEntry),
+    unreadCounters: response.data.unread_counters.map(mapUnreadCounter),
+  };
+};
+
+export const markMonitoringChangeLogsRead = async (
+  ids: string[]
+): Promise<{ updatedIds: string[]; unreadCounters: MonitoringUnreadCounter[] }> => {
+  const response = await api.post<{
+    updated_ids: string[];
+    unread_counters: any[];
+  }>('/api/change-logs/mark-read', { ids });
+
+  return {
+    updatedIds: response.data.updated_ids || [],
+    unreadCounters: (response.data.unread_counters || []).map(mapUnreadCounter),
   };
 };
 

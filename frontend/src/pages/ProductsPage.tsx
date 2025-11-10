@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Package } from 'lucide-react';
 import { useStore } from '../hooks/useStores';
 import { useStoreProducts } from '../hooks/useProducts';
@@ -9,6 +9,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
 import EmptyState from '../components/common/EmptyState';
 import { formatPollingInterval } from '../utils/time';
+import MonitoringSubscribeButton from '../components/monitoring/MonitoringSubscribeButton';
 
 function ProductsPage() {
   const { storeId } = useParams<{ storeId: string }>();
@@ -76,6 +77,79 @@ function ProductsPage() {
     return filtered;
   }, [products, selectedProductType, priceChangeFilter, priceSort]);
 
+  const subscribeTargets = useMemo(() => {
+    if (!storeId) {
+      return [];
+    }
+
+    if (selectedProductType) {
+      return [
+        {
+          scopeType: 'store_product_type' as const,
+          scope: { storeId, productType: selectedProductType },
+          label: `${store?.name ?? 'Store'} • ${selectedProductType}`,
+        },
+      ];
+    }
+
+    if (store) {
+      return [
+        {
+          scopeType: 'store' as const,
+          scope: { storeId },
+          label: store.name,
+        },
+      ];
+    }
+
+    return [];
+  }, [storeId, selectedProductType, store]);
+
+  const subscribeDescription = selectedProductType
+    ? 'Monitor price changes for this store and product type combination.'
+    : 'Monitor price changes across all products in this store.';
+
+  const storeSubscribed = store?.monitoring?.store?.subscribed ?? false;
+  const [localStoreSubscribed, setLocalStoreSubscribed] = useState(storeSubscribed);
+
+  useEffect(() => {
+    setLocalStoreSubscribed(storeSubscribed);
+  }, [storeSubscribed]);
+
+  const storeProductTypeSubscribed = useMemo(() => {
+    if (!selectedProductType || !products) {
+      return false;
+    }
+
+    return products.some(
+      (product) =>
+        product.productType === selectedProductType &&
+        (product.monitoring?.storeProductType?.subscribed ?? false)
+    );
+  }, [selectedProductType, products]);
+
+  const [localStoreProductTypeSubscribed, setLocalStoreProductTypeSubscribed] = useState(
+    storeProductTypeSubscribed
+  );
+
+  useEffect(() => {
+    setLocalStoreProductTypeSubscribed(storeProductTypeSubscribed);
+  }, [storeProductTypeSubscribed, selectedProductType]);
+
+  const subscribeButtonLabel = selectedProductType
+    ? localStoreProductTypeSubscribed ? 'Subscribed' : 'Subscribe'
+    : localStoreSubscribed ? 'Subscribed' : 'Subscribe';
+  const isSubscribeButtonActive = selectedProductType ? localStoreProductTypeSubscribed : localStoreSubscribed;
+  const subscribeButtonVariant = isSubscribeButtonActive ? 'success' : 'primary';
+
+  const handleSubscriptionSuccess = () => {
+    if (selectedProductType) {
+      setLocalStoreProductTypeSubscribed(true);
+    } else {
+      setLocalStoreSubscribed(true);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
@@ -118,15 +192,28 @@ function ProductsPage() {
           {store?.name || 'Store'} Products
         </h1>
         {store && (
-          <div className="text-gray-600 space-y-1 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-            <span>
-              {products?.length || 0} products • Updates every {pollingIntervalText}
-            </span>
-            {lastUpdatedText && (
-              <span className="text-gray-500">
-                Last updated {lastUpdatedText}
+          <div className="text-gray-600 space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+            <div className="space-y-1">
+              <span>
+                {products?.length || 0} products • Updates every {pollingIntervalText}
               </span>
-            )}
+              {lastUpdatedText && (
+                <span className="block text-gray-500 sm:inline">
+                  Last updated {lastUpdatedText}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <MonitoringSubscribeButton
+                targets={subscribeTargets}
+                label={subscribeButtonLabel}
+                buttonVariant={subscribeButtonVariant}
+                buttonSize="sm"
+                disabled={subscribeTargets.length === 0}
+                description={subscribeDescription}
+                onSubscriptionSuccess={handleSubscriptionSuccess}
+              />
+            </div>
           </div>
         )}
       </div>

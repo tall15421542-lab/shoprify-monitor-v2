@@ -7,16 +7,16 @@ let db = null;
 /**
  * Connect to MongoDB
  */
-export async function connect() {
+export async function connect(uri = config.mongodb.uri, dbName = config.mongodb.dbName) {
   if (db) {
     return db;
   }
 
   try {
-    client = new MongoClient(config.mongodb.uri);
+    client = new MongoClient(uri);
     await client.connect();
-    db = client.db(config.mongodb.dbName);
-    console.log(`✓ Connected to MongoDB: ${config.mongodb.dbName}`);
+    db = client.db(dbName);
+    console.log(`✓ Connected to MongoDB: ${dbName}`);
     return db;
   } catch (error) {
     console.error('Failed to connect to MongoDB:', error.message);

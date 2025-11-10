@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Store, Package, Clock, RefreshCw, Power, PauseCircle, AlertCircle } from 'lucide-react';
 import type { Store as StoreType } from '../../types';
 import { useToast } from '../common/ToastContainer';
 import { updateStore, deactivateStore, activateStore } from '../../services/api';
 import { formatPollingInterval } from '../../utils/time';
+import MonitoringSubscribeButton from '../monitoring/MonitoringSubscribeButton';
 
 interface StoreCardProps {
   store: StoreType;
@@ -17,9 +18,18 @@ function StoreCard({ store, onUpdate }: StoreCardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(
+    store.monitoring?.store?.subscribed ?? false
+  );
 
   const isActive = store.status === 'active';
   const isError = store.status === 'error';
+  const subscribeLabel = isSubscribed ? 'Subscribed' : 'Subscribe';
+  const subscribeVariant = isSubscribed ? 'success' : 'primary';
+
+  useEffect(() => {
+    setIsSubscribed(store.monitoring?.store?.subscribed ?? false);
+  }, [store.monitoring?.store?.subscribed]);
 
   const handleClick = () => {
     navigate(`/stores/${store._id}/products`);
@@ -133,6 +143,24 @@ function StoreCard({ store, onUpdate }: StoreCardProps) {
               {isEnabling ? 'Enabling...' : 'Enable'}
             </button>
           )}
+          <MonitoringSubscribeButton
+            targets={[
+              {
+                scopeType: 'store',
+                scope: { storeId: store._id },
+                label: store.name,
+              },
+            ]}
+            buttonVariant={subscribeVariant}
+            buttonSize="sm"
+            label={subscribeLabel}
+            className="disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!isActive}
+            autoSubscribe
+            defaultChangeType="both"
+            defaultIntervalMinutes={Math.max(1, store.pollingInterval || 60)}
+            onSubscriptionSuccess={() => setIsSubscribed(true)}
+          />
           {isActive && (
             <button
               onClick={handleDeactivate}

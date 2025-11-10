@@ -32,6 +32,7 @@ describe('Store Management Endpoints', () => {
     const db = getDb();
     await db.collection('stores').deleteMany({});
     await db.collection('products').deleteMany({});
+    await db.collection('subscriptions').deleteMany({});
   });
 
   describe('POST /stores', () => {
@@ -286,6 +287,61 @@ describe('Store Management Endpoints', () => {
       assert.strictEqual(activeStore.active, true);
       assert.ok(inactiveStore);
       assert.strictEqual(inactiveStore.active, false);
+    });
+
+    it('should include monitoring subscription flags for stores', async () => {
+      const primaryStoreResponse = await fetch(`${baseUrl}/stores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_url: 'https://monitored-store.myshopify.com',
+          store_name: 'Monitored Store'
+        })
+      });
+      const primaryStoreData = await primaryStoreResponse.json();
+      const monitoredStoreId = primaryStoreData.store._id;
+
+      await fetch(`${baseUrl}/stores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_url: 'https://unmonitored-store.myshopify.com',
+          store_name: 'Unmonitored Store'
+        })
+      });
+
+      const { getDb } = await import('../../src/database/connection.js');
+      const db = getDb();
+
+      await db.collection('subscriptions').insertOne({
+        scope_type: 'store',
+        scope_key: { store_id: monitoredStoreId },
+        scope_hash: `store:${monitoredStoreId}`,
+        change_type: 'both',
+        interval_minutes: 60,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      const response = await fetch(`${baseUrl}/stores`);
+      const data = await response.json();
+
+      const monitoredEntry = data.stores.find((store) => store._id === monitoredStoreId);
+      assert.ok(monitoredEntry);
+      assert.ok(monitoredEntry.monitoring);
+      assert.strictEqual(monitoredEntry.monitoring.store.subscribed, true);
+
+      const unmonitoredEntry = data.stores.find(
+        (store) => store.store_url === 'https://unmonitored-store.myshopify.com'
+      );
+      assert.ok(unmonitoredEntry);
+      assert.ok(unmonitoredEntry.monitoring);
+      assert.strictEqual(unmonitoredEntry.monitoring.store.subscribed, false);
+
+      const detailResponse = await fetch(`${baseUrl}/stores/${monitoredStoreId}`);
+      const detailData = await detailResponse.json();
+      assert.ok(detailData.store.monitoring);
+      assert.strictEqual(detailData.store.monitoring.store.subscribed, true);
     });
   });
 

@@ -7,7 +7,7 @@ export const config = {
 
   // Polling configuration
   polling: {
-    defaultInterval: 60 // seconds
+    defaultInterval: 3600 // seconds
   },
 
   // Trigger API configuration

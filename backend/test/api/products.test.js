@@ -33,6 +33,7 @@ describe('Products Endpoints', () => {
     const db = getDb();
     await db.collection('stores').deleteMany({});
     await db.collection('products').deleteMany({});
+    await db.collection('subscriptions').deleteMany({});
 
     // Create a test store
     const result = await db.collection('stores').insertOne({
@@ -144,6 +145,106 @@ describe('Products Endpoints', () => {
       assert.strictEqual(response.status, 400);
       assert.ok(data.error.includes('Invalid'));
     });
+
+    it('should include monitoring flags for store products', async () => {
+      const db = getDb();
+      const storeIdString = testStoreId.toString();
+
+      const insertResult = await db.collection('products').insertMany([
+          {
+            product_id: 'subscribed-product',
+            store_id: testStoreId,
+            handle: 'subscribed-product',
+            title: 'Subscribed Product',
+            product_type: 'Tracked Type',
+            vendor: 'Vendor',
+            tags: [],
+            main_image_url: 'https://example.com/1.jpg',
+            created_at: new Date(),
+            updated_at: new Date(),
+            last_polled_at: new Date(),
+            variants: []
+          },
+          {
+            product_id: 'plain-product',
+            store_id: testStoreId,
+            handle: 'plain-product',
+            title: 'Plain Product',
+            vendor: 'Vendor',
+            tags: [],
+            main_image_url: 'https://example.com/2.jpg',
+            created_at: new Date(),
+            updated_at: new Date(),
+            last_polled_at: new Date(),
+            variants: []
+          }
+        ]);
+
+      const productWithTypeId = insertResult.insertedIds[0];
+      const productWithoutTypeId = insertResult.insertedIds[1];
+
+      await db.collection('subscriptions').insertMany([
+        {
+          scope_type: 'store',
+          scope_key: { store_id: storeIdString },
+          scope_hash: `store:${storeIdString}`,
+          change_type: 'both',
+          interval_minutes: 60,
+          created_at: new Date(),
+          updated_at: new Date()
+        },
+        {
+          scope_type: 'product',
+          scope_key: { store_id: storeIdString, product_id: productWithTypeId.toString() },
+          scope_hash: `product:${storeIdString}:${productWithTypeId.toString()}`,
+          change_type: 'price_up',
+          interval_minutes: 30,
+          created_at: new Date(),
+          updated_at: new Date()
+        },
+        {
+          scope_type: 'product_type',
+          scope_key: { product_type: 'Tracked Type' },
+          scope_hash: 'product_type:Tracked Type',
+          change_type: 'both',
+          interval_minutes: 45,
+          created_at: new Date(),
+          updated_at: new Date()
+        },
+        {
+          scope_type: 'store_product_type',
+          scope_key: { store_id: storeIdString, product_type: 'Tracked Type' },
+          scope_hash: `store_product_type:${storeIdString}:Tracked Type`,
+          change_type: 'both',
+          interval_minutes: 45,
+          created_at: new Date(),
+          updated_at: new Date()
+        }
+      ]);
+
+      const response = await fetch(`${baseUrl}/stores/${testStoreId}/products`);
+      const data = await response.json();
+
+      const subscribedProduct = data.products.find(
+        (product) => product._id === productWithTypeId.toString()
+      );
+      assert.ok(subscribedProduct);
+      assert.ok(subscribedProduct.monitoring);
+      assert.strictEqual(subscribedProduct.monitoring.store.subscribed, true);
+      assert.strictEqual(subscribedProduct.monitoring.product.subscribed, true);
+      assert.strictEqual(subscribedProduct.monitoring.productType.subscribed, true);
+      assert.strictEqual(subscribedProduct.monitoring.storeProductType.subscribed, true);
+
+      const plainProduct = data.products.find(
+        (product) => product._id === productWithoutTypeId.toString()
+      );
+      assert.ok(plainProduct);
+      assert.ok(plainProduct.monitoring);
+      assert.strictEqual(plainProduct.monitoring.store.subscribed, true);
+      assert.strictEqual(plainProduct.monitoring.product.subscribed, false);
+      assert.strictEqual(plainProduct.monitoring.productType.subscribed, false);
+      assert.strictEqual(plainProduct.monitoring.storeProductType.subscribed, false);
+    });
   });
 
   describe('GET /products/:productId', () => {
@@ -204,6 +305,65 @@ describe('Products Endpoints', () => {
 
       assert.strictEqual(response.status, 400);
       assert.ok(data.error.includes('Invalid'));
+    });
+
+    it('should include monitoring flags for individual product', async () => {
+      const db = getDb();
+      const storeIdString = testStoreId.toString();
+
+      const { insertedId: productId } = await db.collection('products').insertOne({
+        product_id: 'single-subscribed',
+        store_id: testStoreId,
+        handle: 'single-subscribed',
+        title: 'Single Subscribed Product',
+        product_type: 'Watched Type',
+        vendor: 'Vendor',
+        tags: [],
+        main_image_url: 'https://example.com/product.jpg',
+        created_at: new Date(),
+        updated_at: new Date(),
+        last_polled_at: new Date(),
+        variants: []
+      });
+
+      await db.collection('subscriptions').insertMany([
+        {
+          scope_type: 'store',
+          scope_key: { store_id: storeIdString },
+          scope_hash: `store:${storeIdString}`,
+          change_type: 'both',
+          interval_minutes: 60,
+          created_at: new Date(),
+          updated_at: new Date()
+        },
+        {
+          scope_type: 'product',
+          scope_key: { store_id: storeIdString, product_id: productId.toString() },
+          scope_hash: `product:${storeIdString}:${productId.toString()}`,
+          change_type: 'both',
+          interval_minutes: 60,
+          created_at: new Date(),
+          updated_at: new Date()
+        },
+        {
+          scope_type: 'product_type',
+          scope_key: { product_type: 'Watched Type' },
+          scope_hash: 'product_type:Watched Type',
+          change_type: 'price_down',
+          interval_minutes: 120,
+          created_at: new Date(),
+          updated_at: new Date()
+        }
+      ]);
+
+      const response = await fetch(`${baseUrl}/products/${productId.toString()}`);
+      const data = await response.json();
+
+      assert.ok(data.product.monitoring);
+      assert.strictEqual(data.product.monitoring.store.subscribed, true);
+      assert.strictEqual(data.product.monitoring.product.subscribed, true);
+      assert.strictEqual(data.product.monitoring.productType.subscribed, true);
+      assert.strictEqual(data.product.monitoring.storeProductType.subscribed, false);
     });
   });
 });

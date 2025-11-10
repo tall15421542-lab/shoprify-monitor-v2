@@ -1,6 +1,11 @@
 import { fetchProducts } from './fetcher.js';
 import { parseProduct } from './parser.js';
 import { getActiveStores, updateLastPolled, upsertProduct } from '../database/operations.js';
+import {
+  loadProductSubscriptionsForStore,
+  evaluateSubscriptionChange,
+  computeProductAveragePrice
+} from './monitoring.js';
 
 /**
  * Poll a single store and save all products
@@ -19,6 +24,9 @@ export async function pollStore(store) {
     let saved = 0;
     let errors = 0;
 
+    const storeIdStr = store._id.toString();
+    const productSubscriptions = await loadProductSubscriptionsForStore(storeIdStr);
+
     // Process each product
     let totalSnapshots = 0;
     for (const product of products) {
@@ -32,6 +40,25 @@ export async function pollStore(store) {
         );
         saved++;
         totalSnapshots += snapshotCount;
+
+        const subscriptionKey = productData?.product_id !== undefined && productData?.product_id !== null
+          ? productData.product_id.toString()
+          : null;
+        const subscription = subscriptionKey ? productSubscriptions.get(subscriptionKey) : undefined;
+        if (subscription) {
+          const currentValue = computeProductAveragePrice(variantsData);
+          if (currentValue !== null) {
+            await evaluateSubscriptionChange(
+              subscription,
+              currentValue,
+              new Date(),
+              {
+                store_name: store.store_name,
+                product_name: productData.title
+              }
+            );
+          }
+        }
 
         if (saved % 50 === 0) {
           console.log(`  Progress: ${saved}/${products.length} products saved`);

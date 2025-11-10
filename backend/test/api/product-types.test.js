@@ -35,6 +35,7 @@ describe('Product Types Endpoints', () => {
     // Clean up test data before each test
     await db.collection('stores').deleteMany({});
     await db.collection('products').deleteMany({});
+    await db.collection('subscriptions').deleteMany({});
     await db.collection('hourly_product_type_avg').deleteMany({});
     await db.collection('hourly_store_product_type_avg').deleteMany({});
   });
@@ -311,6 +312,56 @@ describe('Product Types Endpoints', () => {
         assert.strictEqual(productType.count, 10);
       }
     });
+
+    it('should include monitoring flags for product types', async () => {
+      const storeId = new ObjectId();
+      await db.collection('stores').insertOne({
+        _id: storeId,
+        store_url: 'https://monitoring-store.myshopify.com',
+        store_name: 'Monitoring Store',
+        active: true
+      });
+
+      await db.collection('products').insertMany([
+        {
+          product_id: 9001,
+          store_id: storeId,
+          title: 'Watched Product',
+          product_type: 'Watched Type',
+          tags: []
+        },
+        {
+          product_id: 9002,
+          store_id: storeId,
+          title: 'Plain Product',
+          product_type: 'Plain Type',
+          tags: []
+        }
+      ]);
+
+      await db.collection('subscriptions').insertOne({
+        scope_type: 'product_type',
+        scope_key: { product_type: 'Watched Type' },
+        scope_hash: 'product_type:Watched Type',
+        change_type: 'both',
+        interval_minutes: 60,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      const response = await fetch(`${baseUrl}/product-types`);
+      const data = await response.json();
+
+      const watchedEntry = data.product_types.find((item) => item.product_type === 'Watched Type');
+      assert.ok(watchedEntry);
+      assert.ok(watchedEntry.monitoring);
+      assert.strictEqual(watchedEntry.monitoring.productType.subscribed, true);
+
+      const plainEntry = data.product_types.find((item) => item.product_type === 'Plain Type');
+      assert.ok(plainEntry);
+      assert.ok(plainEntry.monitoring);
+      assert.strictEqual(plainEntry.monitoring.productType.subscribed, false);
+    });
   });
 
   describe('GET /stores/:storeId/product-types', () => {
@@ -524,6 +575,69 @@ describe('Product Types Endpoints', () => {
       assert.strictEqual(data.product_types[1].product_type, 'Banana');
       assert.strictEqual(data.product_types[2].product_type, 'Mango');
       assert.strictEqual(data.product_types[3].product_type, 'Zebra Print');
+    });
+
+    it('should include monitoring flags for store product types', async () => {
+      const storeId = new ObjectId();
+      await db.collection('stores').insertOne({
+        _id: storeId,
+        store_url: 'https://store-with-flags.myshopify.com',
+        store_name: 'Store With Flags',
+        active: true
+      });
+
+      await db.collection('products').insertMany([
+        {
+          product_id: 9101,
+          store_id: storeId,
+          title: 'Watched Item',
+          product_type: 'Flag Type',
+          tags: []
+        },
+        {
+          product_id: 9102,
+          store_id: storeId,
+          title: 'Regular Item',
+          product_type: 'Regular Type',
+          tags: []
+        }
+      ]);
+
+      await db.collection('subscriptions').insertMany([
+        {
+          scope_type: 'product_type',
+          scope_key: { product_type: 'Flag Type' },
+          scope_hash: 'product_type:Flag Type',
+          change_type: 'both',
+          interval_minutes: 60,
+          created_at: new Date(),
+          updated_at: new Date()
+        },
+        {
+          scope_type: 'store_product_type',
+          scope_key: { store_id: storeId.toString(), product_type: 'Flag Type' },
+          scope_hash: `store_product_type:${storeId.toString()}:Flag Type`,
+          change_type: 'price_up',
+          interval_minutes: 30,
+          created_at: new Date(),
+          updated_at: new Date()
+        }
+      ]);
+
+      const response = await fetch(`${baseUrl}/stores/${storeId.toString()}/product-types`);
+      const data = await response.json();
+
+      const flagEntry = data.product_types.find((item) => item.product_type === 'Flag Type');
+      assert.ok(flagEntry);
+      assert.ok(flagEntry.monitoring);
+      assert.strictEqual(flagEntry.monitoring.productType.subscribed, true);
+      assert.strictEqual(flagEntry.monitoring.storeProductType.subscribed, true);
+
+      const regularEntry = data.product_types.find((item) => item.product_type === 'Regular Type');
+      assert.ok(regularEntry);
+      assert.ok(regularEntry.monitoring);
+      assert.strictEqual(regularEntry.monitoring.productType.subscribed, false);
+      assert.strictEqual(regularEntry.monitoring.storeProductType.subscribed, false);
     });
 
     it('should return empty array for non-existent store', async () => {

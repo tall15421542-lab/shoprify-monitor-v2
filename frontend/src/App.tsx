@@ -4,6 +4,7 @@ import StoresPage from './pages/StoresPage';
 import ProductsPage from './pages/ProductsPage';
 import DashboardPage from './pages/DashboardPage';
 import ChangelogPage from './pages/ChangelogPage';
+import MonitoringSubscriptionsPage from './pages/MonitoringSubscriptionsPage';
 import { ToastProvider } from './components/common/ToastContainer';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
             <Route path="stores/:storeId/products" element={<ProductsPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="changelog" element={<ChangelogPage />} />
+            <Route path="subscriptions" element={<MonitoringSubscriptionsPage />} />
           </Route>
         </Routes>
       </Router>

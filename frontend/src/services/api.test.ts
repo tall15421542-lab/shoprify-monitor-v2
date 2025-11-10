@@ -186,6 +186,10 @@ describe('API Service', () => {
                     price: 89.99,
                     recorded_at: '2024-01-01T00:00:00.000Z',
                   },
+                  {
+                    price: 99.99,
+                    recorded_at: '2024-01-02T00:00:00.000Z',
+                  },
                 ],
               },
             ],

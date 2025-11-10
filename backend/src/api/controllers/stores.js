@@ -1,5 +1,10 @@
-import { getDb } from '../../database/connection.js';
 import { ObjectId } from 'mongodb';
+import { getDb } from '../../database/connection.js';
+import {
+  createEmptySubscriptionFlags,
+  getStoreSubscriptionFlag,
+  loadSubscriptionFlags
+} from '../../services/subscription-flags.js';
 import { triggerStorePoll, triggerCurrentHourAggregation } from '../clients/trigger-client.js';
 
 /**
@@ -108,9 +113,33 @@ export async function getAllStores(req, res, next) {
       }
     ]).toArray();
 
+    const storeIds = allStores
+      .map((store) => store?._id?.toString())
+      .filter((value) => typeof value === 'string');
+
+    const subscriptionFlags = storeIds.length > 0
+      ? await loadSubscriptionFlags({ storeIds })
+      : createEmptySubscriptionFlags();
+
+    const storesWithMonitoring = allStores.map((store) => {
+      const storeId = store?._id?.toString();
+      const storeSubscribed = storeId
+        ? getStoreSubscriptionFlag(subscriptionFlags, storeId)
+        : false;
+
+      return {
+        ...store,
+        monitoring: {
+          store: {
+            subscribed: storeSubscribed
+          }
+        }
+      };
+    });
+
     res.json({
-      count: allStores.length,
-      stores: allStores
+      count: storesWithMonitoring.length,
+      stores: storesWithMonitoring
     });
   } catch (error) {
     next(error);
@@ -166,7 +195,26 @@ export async function getStoreById(req, res, next) {
       });
     }
 
-    res.json({ store: storeArray[0] });
+    const storeDoc = storeArray[0];
+    const storeIdStr = storeDoc?._id?.toString();
+    const subscriptionFlags = storeIdStr
+      ? await loadSubscriptionFlags({ storeIds: [storeIdStr] })
+      : createEmptySubscriptionFlags();
+
+    const storeSubscribed = storeIdStr
+      ? getStoreSubscriptionFlag(subscriptionFlags, storeIdStr)
+      : false;
+
+    res.json({
+      store: {
+        ...storeDoc,
+        monitoring: {
+          store: {
+            subscribed: storeSubscribed
+          }
+        }
+      }
+    });
   } catch (error) {
     next(error);
   }

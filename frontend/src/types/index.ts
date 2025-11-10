@@ -1,4 +1,8 @@
 // Store Types
+export interface MonitoringFlag {
+  subscribed: boolean;
+}
+
 export interface Store {
   _id: string;
   name: string;
@@ -7,6 +11,9 @@ export interface Store {
   pollingInterval: number;
   lastFetch?: Date;
   productCount?: number;
+  monitoring?: {
+    store?: MonitoringFlag;
+  };
 }
 
 export interface AddStoreData {
@@ -25,6 +32,10 @@ export interface Tag {
 export interface ProductType {
   product_type: string;
   count: number;
+  monitoring?: {
+    productType?: MonitoringFlag;
+    storeProductType?: MonitoringFlag;
+  };
 }
 
 // Product Types
@@ -47,6 +58,12 @@ export interface Product {
   hasVariantPriceDown?: boolean;
   createdAt: Date;
   updatedAt: Date;
+  monitoring?: {
+    store?: MonitoringFlag;
+    product?: MonitoringFlag;
+    productType?: MonitoringFlag;
+    storeProductType?: MonitoringFlag;
+  };
 }
 
 export interface Variant {
@@ -117,5 +134,77 @@ export interface ChartFilters {
   storeId?: string;
   tag?: string;
   windowHours: number;
+}
+
+// Monitoring Subscriptions
+export type MonitoringScopeType = 'product' | 'store' | 'product_type' | 'store_product_type';
+export type MonitoringChangeType = 'price_up' | 'price_down' | 'both';
+
+export interface MonitoringScopeKey {
+  storeId?: string;
+  productId?: string;
+  productType?: string;
+}
+
+export interface MonitoringSubscription {
+  id: string;
+  scopeType: MonitoringScopeType;
+  scope: MonitoringScopeKey;
+  storeName?: string;
+  productName?: string;
+  changeType: MonitoringChangeType;
+  intervalMinutes: number;
+  unreadCount: number;
+  unreadUpdatedAt: Date | null;
+  unreadChangeLogs: MonitoringChangeLogEntry[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateMonitoringSubscriptionInput {
+  scopeType: MonitoringScopeType;
+  scope: MonitoringScopeKey;
+  changeType: MonitoringChangeType;
+  intervalMinutes: number;
+}
+
+export interface MonitoringChangeLogEntry {
+  id: string;
+  subscriptionId: string;
+  scopeType: MonitoringScopeType;
+  scope: MonitoringScopeKey;
+  storeName?: string;
+  productName?: string;
+  changeType: MonitoringChangeType;
+  currentValue: number | null;
+  previousValue: number | null;
+  absoluteChange: number | null;
+  percentageChange: number | null;
+  detectedAt: Date;
+  readAt: Date | null;
+  isBaseline: boolean;
+}
+
+export interface MonitoringUnreadCounter {
+  subscriptionId: string;
+  unreadCount: number;
+  updatedAt: Date | null;
+}
+
+export interface MonitoringChangeLogResponse {
+  count: number;
+  limit: number;
+  offset: number;
+  entries: MonitoringChangeLogEntry[];
+  unreadCounters: MonitoringUnreadCounter[];
+}
+
+export interface MonitoringChangeLogParams {
+  subscriptionId?: string;
+  scopeType?: MonitoringScopeType;
+  readState?: 'read' | 'unread';
+  since?: Date;
+  limit?: number;
+  offset?: number;
 }
 

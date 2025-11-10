@@ -1,8 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ProductCard from './ProductCard';
 import type { Product } from '../../types';
+import { ToastProvider } from '../common/ToastContainer';
+
+vi.mock('../monitoring/MonitoringSubscribeButton', () => ({
+  __esModule: true,
+  default: (props: any) => (
+    <button type="button">{props.label}</button>
+  ),
+}));
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -11,7 +19,9 @@ const createWrapper = () => {
     },
   });
   return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
   );
 };
 
@@ -41,6 +51,7 @@ describe('ProductCard', () => {
     expect(screen.getByText('Test Product')).toBeInTheDocument();
     expect(screen.getByText('$99.99')).toBeInTheDocument();
     expect(screen.getByText('by Test Vendor')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /subscribe/i })).toBeInTheDocument();
   });
 
   it('displays product image', () => {
@@ -102,6 +113,19 @@ describe('ProductCard', () => {
     expect(screen.getByText('$99.99')).toBeInTheDocument();
     // Should not show price change badge
     expect(screen.queryByText(/\+\$/)).not.toBeInTheDocument();
+  });
+
+  it('shows subscribed label when monitoring flag is true', () => {
+    const subscribedProduct: Product = {
+      ...mockProduct,
+      monitoring: {
+        product: { subscribed: true },
+      },
+    };
+
+    render(<ProductCard product={subscribedProduct} />, { wrapper: createWrapper() });
+
+    expect(screen.getByRole('button', { name: /subscribed/i })).toBeInTheDocument();
   });
 });
 

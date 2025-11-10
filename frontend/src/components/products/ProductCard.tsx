@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Package } from 'lucide-react';
 import type { Product } from '../../types';
 import { formatPrice } from '../../utils/price';
 import PriceChange from './PriceChange';
 import PriceHistoryModal from './PriceHistoryModal';
+import MonitoringSubscribeButton from '../monitoring/MonitoringSubscribeButton';
 
 interface ProductCardProps {
   product: Product;
@@ -16,6 +17,15 @@ function ProductCard({ product }: ProductCardProps) {
   const imageSrc = product.images[0]?.src || '';
   const hasImage = !!imageSrc;
   const hasPriceChange = product.previousPrice && product.priceChange !== undefined;
+  const [isSubscribed, setIsSubscribed] = useState(
+    product.monitoring?.product?.subscribed ?? false
+  );
+  const subscribeLabel = isSubscribed ? 'Subscribed' : 'Subscribe';
+  const subscribeVariant = isSubscribed ? 'success' : 'primary';
+
+  useEffect(() => {
+    setIsSubscribed(product.monitoring?.product?.subscribed ?? false);
+  }, [product.monitoring?.product?.subscribed]);
 
   return (
     <>
@@ -115,6 +125,27 @@ function ProductCard({ product }: ProductCardProps) {
               )}
             </div>
           )}
+          <div
+            className="mt-4 flex items-center justify-between gap-2"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <p className="text-xs text-gray-500">Stay updated on this product&apos;s price changes.</p>
+            <MonitoringSubscribeButton
+              targets={[
+                {
+                  scopeType: 'product',
+                  scope: { storeId: product.storeId, productId: product._id },
+                  label: product.title,
+                },
+              ]}
+              buttonVariant={subscribeVariant}
+              buttonSize="sm"
+              label={subscribeLabel}
+              description={`Monitor price changes for ${product.title}.`}
+              onSubscriptionSuccess={() => setIsSubscribed(true)}
+            />
+          </div>
         </div>
       </div>
 

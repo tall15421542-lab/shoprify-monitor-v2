@@ -20,6 +20,13 @@ const mockDeactivateStore = vi.fn();
 const mockActivateStore = vi.fn();
 const mockUpdateStore = vi.fn();
 
+vi.mock('../monitoring/MonitoringSubscribeButton', () => ({
+  __esModule: true,
+  default: (props: any) => (
+    <button type="button">{props.label}</button>
+  ),
+}));
+
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
@@ -60,6 +67,33 @@ describe('StoreCard', () => {
     expect(screen.getByText('test.myshopify.com')).toBeInTheDocument();
     expect(screen.getByText('50 products')).toBeInTheDocument();
     expect(screen.getByText('Every 24 minutes')).toBeInTheDocument();
+  });
+
+  it('shows subscribe label when monitoring is not active', () => {
+    render(
+      <BrowserRouter>
+        <StoreCard store={mockStore} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByRole('button', { name: /subscribe/i })).toBeInTheDocument();
+  });
+
+  it('shows subscribed label when monitoring is active', () => {
+    const subscribedStore: Store = {
+      ...mockStore,
+      monitoring: {
+        store: { subscribed: true },
+      },
+    };
+
+    render(
+      <BrowserRouter>
+        <StoreCard store={subscribedStore} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByRole('button', { name: /subscribed/i })).toBeInTheDocument();
   });
 
   it('does not render status badge for active store', () => {

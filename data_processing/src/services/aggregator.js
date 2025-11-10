@@ -1,4 +1,5 @@
 import { getDb } from '../database/connection.js';
+import { evaluateAggregatedSubscriptions } from './monitoring.js';
 
 async function getActiveStoreIds(db) {
   const storesCollection = db.collection('stores');
@@ -77,6 +78,7 @@ export async function aggregateStoreAverages(windowStart, windowEnd) {
     }));
 
     await hourlyStoreAvgCollection.bulkWrite(bulkOps);
+    await evaluateAggregatedSubscriptions('store', results, windowEnd);
     console.log(`✓ Aggregated ${results.length} store average(s) for window ${windowStart.toISOString()}`);
   } else {
     console.log(`No data to aggregate for window ${windowStart.toISOString()}`);
@@ -323,6 +325,7 @@ export async function aggregateProductTypeAverages(windowStart, windowEnd) {
     }));
 
     await hourlyProductTypeAvgCollection.bulkWrite(bulkOps);
+    await evaluateAggregatedSubscriptions('product_type', results, windowEnd);
     console.log(`✓ Aggregated ${results.length} product type average(s) for window ${windowStart.toISOString()}`);
   } else {
     console.log(`No product type data to aggregate for window ${windowStart.toISOString()}`);
@@ -406,6 +409,7 @@ export async function aggregateStoreProductTypeAverages(windowStart, windowEnd) 
     }));
 
     await hourlyStoreProductTypeAvgCollection.bulkWrite(bulkOps);
+    await evaluateAggregatedSubscriptions('store_product_type', results, windowEnd);
     console.log(`✓ Aggregated ${results.length} store-product-type average(s) for window ${windowStart.toISOString()}`);
   } else {
     console.log(`No store-product-type data to aggregate for window ${windowStart.toISOString()}`);

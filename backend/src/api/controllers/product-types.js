@@ -1,5 +1,11 @@
-import { getDb } from '../../database/connection.js';
 import { ObjectId } from 'mongodb';
+import { getDb } from '../../database/connection.js';
+import {
+  createEmptySubscriptionFlags,
+  getProductTypeSubscriptionFlag,
+  getStoreProductTypeSubscriptionFlag,
+  loadSubscriptionFlags
+} from '../../services/subscription-flags.js';
 
 /**
  * Get all unique product types across all stores
@@ -33,9 +39,33 @@ export async function getAllProductTypes(req, res, next) {
       }
     ]).toArray();
 
+    const productTypeNames = productTypesAggregation
+      .map((item) => item?.product_type)
+      .filter((value) => typeof value === 'string' && value.trim() !== '');
+
+    const subscriptionFlags = productTypeNames.length > 0
+      ? await loadSubscriptionFlags({ productTypes: productTypeNames })
+      : createEmptySubscriptionFlags();
+
+    const productTypesWithMonitoring = productTypesAggregation.map((item) => {
+      const productType = item?.product_type;
+      const productTypeSubscribed = productType
+        ? getProductTypeSubscriptionFlag(subscriptionFlags, productType)
+        : false;
+
+      return {
+        ...item,
+        monitoring: {
+          productType: {
+            subscribed: productTypeSubscribed
+          }
+        }
+      };
+    });
+
     res.json({
-      count: productTypesAggregation.length,
-      product_types: productTypesAggregation
+      count: productTypesWithMonitoring.length,
+      product_types: productTypesWithMonitoring
     });
   } catch (error) {
     next(error);
@@ -87,10 +117,48 @@ export async function getStoreProductTypesHandler(req, res, next) {
       }
     ]).toArray();
 
+    const productTypeNames = productTypesAggregation
+      .map((item) => item?.product_type)
+      .filter((value) => typeof value === 'string' && value.trim() !== '');
+
+    const storeProductTypes = productTypeNames.map((productType) => ({
+      storeId,
+      productType
+    }));
+
+    const subscriptionFlags = productTypeNames.length > 0
+      ? await loadSubscriptionFlags({
+          productTypes: productTypeNames,
+          storeProductTypes
+        })
+      : createEmptySubscriptionFlags();
+
+    const productTypesWithMonitoring = productTypesAggregation.map((item) => {
+      const productType = item?.product_type;
+      const productTypeSubscribed = productType
+        ? getProductTypeSubscriptionFlag(subscriptionFlags, productType)
+        : false;
+      const storeProductTypeSubscribed = productType
+        ? getStoreProductTypeSubscriptionFlag(subscriptionFlags, storeId, productType)
+        : false;
+
+      return {
+        ...item,
+        monitoring: {
+          productType: {
+            subscribed: productTypeSubscribed
+          },
+          storeProductType: {
+            subscribed: storeProductTypeSubscribed
+          }
+        }
+      };
+    });
+
     res.json({
       store_id: storeId,
-      count: productTypesAggregation.length,
-      product_types: productTypesAggregation
+      count: productTypesWithMonitoring.length,
+      product_types: productTypesWithMonitoring
     });
   } catch (error) {
     next(error);

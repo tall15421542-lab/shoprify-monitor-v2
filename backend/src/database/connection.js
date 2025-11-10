@@ -38,6 +38,17 @@ export function getDb() {
 }
 
 /**
+ * Get MongoDB client instance
+ * @returns {MongoClient} MongoDB client instance
+ */
+export function getClient() {
+  if (!client) {
+    throw new Error('Database not connected. Call connect() first.');
+  }
+  return client;
+}
+
+/**
  * Close database connection
  */
 export async function close() {

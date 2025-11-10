@@ -181,31 +181,32 @@ function MonitoringSubscriptionForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="label" htmlFor="scope-type">
-            Scope Type
-          </label>
-          <select
-            id="scope-type"
-            className="input-field w-full"
-            value={values.scopeType}
-            onChange={handleScopeTypeChange}
-            disabled={submitting || availableScopeTypes.length === 1}
-          >
-            {availableScopeTypes.map((scopeType) => (
-              <option key={scopeType} value={scopeType}>
-                {scopeType === 'store'
-                  ? 'Store'
-                  : scopeType === 'product'
-                  ? 'Product'
-                  : scopeType === 'product_type'
-                  ? 'Product Type'
-                  : 'Store + Product Type'}
-              </option>
-            ))}
-          </select>
-        </div>
-
+        {mode === 'create' && (
+          <div>
+            <label className="label" htmlFor="scope-type">
+              Scope Type
+            </label>
+            <select
+              id="scope-type"
+              className="input-field w-full"
+              value={values.scopeType}
+              onChange={handleScopeTypeChange}
+              disabled={submitting || availableScopeTypes.length === 1}
+            >
+              {availableScopeTypes.map((scopeType) => (
+                <option key={scopeType} value={scopeType}>
+                  {scopeType === 'store'
+                    ? 'Store'
+                    : scopeType === 'product'
+                    ? 'Product'
+                    : scopeType === 'product_type'
+                    ? 'Product Type'
+                    : 'Store + Product Type'}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="change-type">
             Change Type
@@ -243,39 +244,39 @@ function MonitoringSubscriptionForm({
           </p>
         </div>
       </div>
+      {mode === 'create' &&
+        (values.scopeType === 'store' ||
+          values.scopeType === 'product' ||
+          values.scopeType === 'store_product_type') && (
+          <div>
+            <label className="label" htmlFor="store-id-input">
+              Store ID
+            </label>
+            <input
+              id="store-id-input"
+              list={storeDatalistId}
+              className="input-field w-full"
+              placeholder="e.g. 507f1f77..."
+              value={values.storeId}
+              onChange={handleChange('storeId')}
+              disabled={submitting}
+            />
+            <datalist id={storeDatalistId}>
+              {storeOptions.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </datalist>
+            <p className="text-xs text-gray-500 mt-1">
+              {storeOptions.length > 0
+                ? 'Select a store from the list or paste an ID.'
+                : 'Paste the store ID targeted by this subscription.'}
+            </p>
+          </div>
+        )}
 
-      {(values.scopeType === 'store' ||
-        values.scopeType === 'product' ||
-        values.scopeType === 'store_product_type') && (
-        <div>
-          <label className="label" htmlFor="store-id-input">
-            Store ID
-          </label>
-          <input
-            id="store-id-input"
-            list={storeDatalistId}
-            className="input-field w-full"
-            placeholder="e.g. 507f1f77..."
-            value={values.storeId}
-            onChange={handleChange('storeId')}
-            disabled={submitting}
-          />
-          <datalist id={storeDatalistId}>
-            {storeOptions.map((store) => (
-              <option key={store.id} value={store.id}>
-                {store.name}
-              </option>
-            ))}
-          </datalist>
-          <p className="text-xs text-gray-500 mt-1">
-            {storeOptions.length > 0
-              ? 'Select a store from the list or paste an ID.'
-              : 'Paste the store ID targeted by this subscription.'}
-          </p>
-        </div>
-      )}
-
-      {values.scopeType === 'product' && (
+      {mode === 'create' && values.scopeType === 'product' && (
         <div>
           <label className="label" htmlFor="product-id-input">
             Product ID
@@ -291,28 +292,29 @@ function MonitoringSubscriptionForm({
         </div>
       )}
 
-      {(values.scopeType === 'product_type' ||
-        values.scopeType === 'store_product_type') && (
-        <div>
-          <label className="label" htmlFor="product-type-input">
-            Product Type
-          </label>
-          <input
-            id="product-type-input"
-            list={productTypeDatalistId}
-            className="input-field w-full"
-            placeholder="e.g. Sneakers"
-            value={values.productType}
-            onChange={handleChange('productType')}
-            disabled={submitting}
-          />
-          <datalist id={productTypeDatalistId}>
-            {productTypeOptions.map((type) => (
-              <option key={type} value={type} />
-            ))}
-          </datalist>
-        </div>
-      )}
+      {mode === 'create' &&
+        (values.scopeType === 'product_type' ||
+          values.scopeType === 'store_product_type') && (
+          <div>
+            <label className="label" htmlFor="product-type-input">
+              Product Type
+            </label>
+            <input
+              id="product-type-input"
+              list={productTypeDatalistId}
+              className="input-field w-full"
+              placeholder="e.g. Sneakers"
+              value={values.productType}
+              onChange={handleChange('productType')}
+              disabled={submitting}
+            />
+            <datalist id={productTypeDatalistId}>
+              {productTypeOptions.map((type) => (
+                <option key={type} value={type} />
+              ))}
+            </datalist>
+          </div>
+        )}
 
       {(localError || errorMessage) && (
         <div className="text-sm text-red-600">

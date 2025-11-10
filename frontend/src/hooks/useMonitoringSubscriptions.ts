@@ -44,7 +44,18 @@ export function useUpdateMonitoringSubscription() {
       id: string;
       input: CreateMonitoringSubscriptionInput;
     }) => updateMonitoringSubscription(id, input),
-    onSuccess: () => {
+    onSuccess: (updatedSubscription) => {
+      queryClient.setQueryData<MonitoringSubscription[] | undefined>(
+        SUBSCRIPTIONS_QUERY_KEY,
+        (existing) => {
+          if (!existing) {
+            return existing;
+          }
+          return existing.map((subscription) =>
+            subscription.id === updatedSubscription.id ? updatedSubscription : subscription
+          );
+        }
+      );
       queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_QUERY_KEY });
     },
   });

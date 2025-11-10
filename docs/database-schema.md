@@ -24,6 +24,21 @@
 - Time-series options: `timeField` = `timestamp`, `metaField` = `metadata`, hourly granularity.
 - Indexes: compound indexes on timestamp mixed with `metadata.store_id`, `metadata.tags`, and `metadata.product_type` to keep analytics queries fast.
 
+### subscriptions
+- Stores monitoring subscriptions for scope types: `product`, `store`, `product_type`, `store_product_type`.
+- Key fields: `scope_type`, `scope_key`, `scope_hash`, `change_type`, `interval_minutes`, `created_at`, `updated_at`.
+- Indexes: compound index on `{ scope_type: 1 }` and unique index on `{ scope_hash: 1 }`.
+
+### change_logs
+- Holds unread and historical price change events for each subscription.
+- Key fields: `subscription_id`, `scope_type`, `scope_key`, `change_type`, `previous_value`, `current_value`, `absolute_change`, `percentage_change`, `detected_at`, `read_at`, `is_baseline`.
+- Indexes: compound index on `{ subscription_id: 1, detected_at: -1 }`.
+
+### change_read_counters
+- Tracks unread change counts per subscription.
+- Key fields: `subscription_id`, `unread_count`, `updated_at`.
+- Indexes: unique index on `{ subscription_id: 1 }`.
+
 ## Aggregated Collections
 
 ### hourly_store_avg

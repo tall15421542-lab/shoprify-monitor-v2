@@ -29,140 +29,187 @@ const DEFAULT_AGGREGATE_URL = process.env.AGGREGATE_URL || 'http://localhost:300
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  if (!args.pollUrl) {
-    console.error('Error: --poll-url is required.');
+  const pollUrlInput = args.pollUrl ?? args.pollUrls ?? args.pollUrlList;
+  const pollUrlValues = extractPollUrls(pollUrlInput);
+
+  if (pollUrlValues.length === 0) {
+    console.error('Error: At least one --poll-url is required.');
     process.exitCode = 1;
     return;
   }
 
-  const config = {
-    pollUrl: normalizeStoreUrl(args.pollUrl),
-    limit: Number.isFinite(args.limit) ? args.limit : DEFAULT_LIMIT,
-    page: Number.isFinite(args.page) ? args.page : DEFAULT_PAGE,
-    adjustRange: Number.isFinite(args.adjustPriceRange) ? args.adjustPriceRange : DEFAULT_PRICE_RANGE,
-    ratio: clampRatio(args.ratioOfMock ?? DEFAULT_RATIO),
-    mongoUri: args.mongoUri || DEFAULT_MONGO_URI,
-    dbName: args.dbName || DEFAULT_DB_NAME,
-    aggregateUrl: args.aggregateUrl || DEFAULT_AGGREGATE_URL
+  const normalizedPollUrls = [];
+  for (const pollUrl of pollUrlValues) {
+    try {
+      normalizedPollUrls.push(normalizeStoreUrl(pollUrl));
+    } catch (error) {
+      console.error(`Invalid poll URL "${pollUrl}": ${error.message}`);
+    }
+  }
+
+  if (normalizedPollUrls.length === 0) {
+    console.error('Error: No valid --poll-url values provided.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const limitArg = getLastValue(args.limit);
+  const pageArg = getLastValue(args.page);
+  const adjustRangeArg = getLastValue(args.adjustPriceRange);
+  const ratioArg = getLastValue(args.ratioOfMock);
+  const mongoUriArg = getLastValue(args.mongoUri);
+  const dbNameArg = getLastValue(args.dbName);
+  const aggregateUrlArg = getLastValue(args.aggregateUrl);
+
+  const sharedConfig = {
+    limit: Number.isFinite(limitArg) ? limitArg : DEFAULT_LIMIT,
+    page: Number.isFinite(pageArg) ? pageArg : DEFAULT_PAGE,
+    adjustRange: Number.isFinite(adjustRangeArg) ? adjustRangeArg : DEFAULT_PRICE_RANGE,
+    ratio: clampRatio(ratioArg ?? DEFAULT_RATIO),
+    mongoUri: typeof mongoUriArg === 'string' && mongoUriArg.length > 0 ? mongoUriArg : DEFAULT_MONGO_URI,
+    dbName: typeof dbNameArg === 'string' && dbNameArg.length > 0 ? dbNameArg : DEFAULT_DB_NAME,
+    aggregateUrl: typeof aggregateUrlArg === 'string' && aggregateUrlArg.length > 0
+      ? aggregateUrlArg
+      : DEFAULT_AGGREGATE_URL
   };
 
   let client;
+  let encounteredError = false;
+
   try {
-    const productsPayload = await fetchProducts(config.pollUrl, config.limit, config.page);
-    const products = productsPayload.products ?? [];
-    if (products.length === 0) {
-      console.log('No products returned from storefront. Nothing to do.');
-      return;
-    }
-
-    const selectedIds = pickProductIds(products, config.ratio);
-    console.log(`Fetched ${products.length} products. Adjusting ${selectedIds.size} of them.`);
-
-    client = new MongoClient(config.mongoUri);
+    client = new MongoClient(sharedConfig.mongoUri);
     await client.connect();
-    const db = client.db(config.dbName);
+    const db = client.db(sharedConfig.dbName);
 
-    const nextWindow = await computeNextWindowFromDb(db, config.pollUrl);
-    console.log(`Using next window ${nextWindow.toISOString()} for mock data insert.`);
-
-    const storeDoc = await ensureStore(db, config.pollUrl, nextWindow);
-
-    const productsCollection = db.collection('products');
-    const subscriptionsCollection = db.collection('subscriptions');
-    const changeLogsCollection = db.collection('change_logs');
-    const changeCountersCollection = db.collection('change_read_counters');
-    const snapshotDocs = [];
-    let adjustedVariants = 0;
-    let insertedProducts = 0;
-    let updatedVariants = 0;
-    let productChangeLogsInserted = 0;
-
-    for (const product of products) {
-      const shouldAdjust = selectedIds.has(product.id);
-      const {
-        productDoc,
-        variantDocs,
-        snapshots,
-        variantAdjustmentCount
-      } = transformProduct(product, {
-        store: storeDoc,
-        adjustRange: config.adjustRange,
-        shouldAdjust,
-        nextWindow
-      });
-
-      const existingProduct = await productsCollection.findOne({
-        store_id: storeDoc._id,
-        product_id: productDoc.product_id
-      });
-
-      let productMongoId = existingProduct?._id ?? null;
-      let currentAverage = null;
-
-      if (!existingProduct) {
-        const insertResult = await productsCollection.insertOne(productDoc);
-        productMongoId = insertResult.insertedId;
-        insertedProducts += 1;
-        currentAverage = computeAveragePriceFromVariants(productDoc.variants);
-      } else {
-        updatedVariants += await updateExistingProduct(productsCollection, existingProduct, variantDocs);
-        const refreshedProduct = await productsCollection.findOne(
-          { _id: existingProduct._id },
-          { projection: { variants: 1 } }
-        );
-        const variantsSnapshot = refreshedProduct?.variants ?? existingProduct.variants ?? [];
-        currentAverage = computeAveragePriceFromVariants(variantsSnapshot);
-      }
-
-      const productIdForSubscription = productMongoId ? productMongoId.toString() : String(productDoc.product_id);
-
-      if (snapshots.length > 0) {
-        snapshotDocs.push(...snapshots);
-        adjustedVariants += variantAdjustmentCount;
-      }
-
-      const changeLogged = await maybeRecordProductChangeLog(
-        {
-          subscriptionsCollection,
-          changeLogsCollection,
-          changeCountersCollection
-        },
-        {
-          storeId: storeDoc._id.toString(),
-          storeName: storeDoc.store_name,
-          productId: productIdForSubscription,
-          productName: existingProduct?.title ?? productDoc.title,
-          currentAverage,
-          detectedAt: nextWindow,
-          isNewProduct: !existingProduct,
-          priceAdjusted: shouldAdjust
-        }
-      );
-
-      if (changeLogged) {
-        productChangeLogsInserted += 1;
+    for (const pollUrl of normalizedPollUrls) {
+      console.log(`\n=== Generating mock data for ${pollUrl} ===`);
+      try {
+        await generateMockDataForStore(db, { ...sharedConfig, pollUrl });
+      } catch (error) {
+        encounteredError = true;
+        console.error(`[${pollUrl}] Mock data generation failed:`, error);
       }
     }
-
-    if (snapshotDocs.length > 0) {
-      await db.collection('price_snapshots').insertMany(snapshotDocs);
-    }
-
-    console.log(`Inserted products: ${insertedProducts}, variants updated: ${updatedVariants}`);
-    console.log(`Inserted price snapshots: ${snapshotDocs.length}, adjusted variants: ${adjustedVariants}`);
-    console.log(`[monitoring] Product change logs inserted: ${productChangeLogsInserted}`);
-
-    await triggerAggregate(config.aggregateUrl, nextWindow);
-
-    await verifyInserts(db, storeDoc, nextWindow, adjustedVariants);
   } catch (error) {
     console.error('Mock data generation failed:', error);
     process.exitCode = 1;
+    return;
   } finally {
     if (client) {
       await client.close().catch(() => {});
     }
   }
+
+  if (encounteredError) {
+    process.exitCode = 1;
+  }
+}
+
+async function generateMockDataForStore(db, config) {
+  const productsPayload = await fetchProducts(config.pollUrl, config.limit, config.page);
+  const products = productsPayload.products ?? [];
+
+  if (products.length === 0) {
+    console.log(`[${config.pollUrl}] No products returned from storefront. Nothing to do.`);
+    return;
+  }
+
+  const selectedIds = pickProductIds(products, config.ratio);
+  console.log(`[${config.pollUrl}] Fetched ${products.length} products. Adjusting ${selectedIds.size} of them.`);
+
+  const nextWindow = await computeNextWindowFromDb(db, config.pollUrl);
+  console.log(`[${config.pollUrl}] Using next window ${nextWindow.toISOString()} for mock data insert.`);
+
+  const storeDoc = await ensureStore(db, config.pollUrl, nextWindow);
+
+  const productsCollection = db.collection('products');
+  const subscriptionsCollection = db.collection('subscriptions');
+  const changeLogsCollection = db.collection('change_logs');
+  const changeCountersCollection = db.collection('change_read_counters');
+  const snapshotDocs = [];
+  let adjustedVariants = 0;
+  let insertedProducts = 0;
+  let updatedVariants = 0;
+  let productChangeLogsInserted = 0;
+
+  for (const product of products) {
+    const shouldAdjust = selectedIds.has(product.id);
+    const {
+      productDoc,
+      variantDocs,
+      snapshots,
+      variantAdjustmentCount
+    } = transformProduct(product, {
+      store: storeDoc,
+      adjustRange: config.adjustRange,
+      shouldAdjust,
+      nextWindow
+    });
+
+    const existingProduct = await productsCollection.findOne({
+      store_id: storeDoc._id,
+      product_id: productDoc.product_id
+    });
+
+    let productMongoId = existingProduct?._id ?? null;
+    let currentAverage = null;
+
+    if (!existingProduct) {
+      const insertResult = await productsCollection.insertOne(productDoc);
+      productMongoId = insertResult.insertedId;
+      insertedProducts += 1;
+      currentAverage = computeAveragePriceFromVariants(productDoc.variants);
+    } else {
+      updatedVariants += await updateExistingProduct(productsCollection, existingProduct, variantDocs);
+      const refreshedProduct = await productsCollection.findOne(
+        { _id: existingProduct._id },
+        { projection: { variants: 1 } }
+      );
+      const variantsSnapshot = refreshedProduct?.variants ?? existingProduct.variants ?? [];
+      currentAverage = computeAveragePriceFromVariants(variantsSnapshot);
+    }
+
+    const productIdForSubscription = productMongoId ? productMongoId.toString() : String(productDoc.product_id);
+
+    if (snapshots.length > 0) {
+      snapshotDocs.push(...snapshots);
+      adjustedVariants += variantAdjustmentCount;
+    }
+
+    const changeLogged = await maybeRecordProductChangeLog(
+      {
+        subscriptionsCollection,
+        changeLogsCollection,
+        changeCountersCollection
+      },
+      {
+        storeId: storeDoc._id.toString(),
+        storeName: storeDoc.store_name,
+        productId: productIdForSubscription,
+        productName: existingProduct?.title ?? productDoc.title,
+        currentAverage,
+        detectedAt: nextWindow,
+        isNewProduct: !existingProduct,
+        priceAdjusted: shouldAdjust
+      }
+    );
+
+    if (changeLogged) {
+      productChangeLogsInserted += 1;
+    }
+  }
+
+  if (snapshotDocs.length > 0) {
+    await db.collection('price_snapshots').insertMany(snapshotDocs);
+  }
+
+  console.log(`[${config.pollUrl}] Inserted products: ${insertedProducts}, variants updated: ${updatedVariants}`);
+  console.log(`[${config.pollUrl}] Inserted price snapshots: ${snapshotDocs.length}, adjusted variants: ${adjustedVariants}`);
+  console.log(`[${config.pollUrl}] [monitoring] Product change logs inserted: ${productChangeLogsInserted}`);
+
+  await triggerAggregate(config.aggregateUrl, nextWindow);
+
+  await verifyInserts(db, storeDoc, nextWindow, adjustedVariants);
 }
 
 function parseArgs(argv) {
@@ -175,13 +222,26 @@ function parseArgs(argv) {
     const key = current.slice(2);
     const next = argv[i + 1];
     if (!next || next.startsWith('--')) {
-      args[toCamelCase(key)] = true;
+      assignArgValue(args, toCamelCase(key), true);
       continue;
     }
-    args[toCamelCase(key)] = parseArgValue(next);
+    assignArgValue(args, toCamelCase(key), parseArgValue(next));
     i += 1;
   }
   return args;
+}
+
+function assignArgValue(args, key, value) {
+  if (Object.prototype.hasOwnProperty.call(args, key)) {
+    const existing = args[key];
+    if (Array.isArray(existing)) {
+      existing.push(value);
+    } else {
+      args[key] = [existing, value];
+    }
+  } else {
+    args[key] = value;
+  }
 }
 
 function parseArgValue(value) {
@@ -212,6 +272,26 @@ function clampRatio(ratio) {
   if (ratio <= 0) return DEFAULT_RATIO;
   if (ratio > 1) return 1;
   return ratio;
+}
+
+function extractPollUrls(input) {
+  if (Array.isArray(input)) {
+    return input.flatMap((value) => extractPollUrls(value));
+  }
+  if (typeof input !== 'string') {
+    return [];
+  }
+  return input
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function getLastValue(value) {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value[value.length - 1] : undefined;
+  }
+  return value;
 }
 
 async function fetchProducts(baseUrl, limit, page) {

@@ -11,17 +11,29 @@ import type {
 
 const CHANGE_LOG_QUERY_KEY = ['monitoring', 'change-logs'];
 
+interface UseMonitoringChangeLogsOptions {
+  refetchInterval?: number | false;
+}
+
 export function useMonitoringChangeLogs(
   params: MonitoringChangeLogParams,
-  enabled = true
+  enabled = true,
+  options?: UseMonitoringChangeLogsOptions
 ) {
+  const resolvedRefetchInterval =
+    options?.refetchInterval !== undefined
+      ? options.refetchInterval
+      : enabled
+      ? 5000
+      : false;
+
   return useQuery<MonitoringChangeLogResponse>({
     queryKey: [...CHANGE_LOG_QUERY_KEY, params],
     queryFn: () => getMonitoringChangeLogs(params),
     enabled,
     keepPreviousData: true,
     refetchOnWindowFocus: false,
-    refetchInterval: enabled ? 5000 : false,
+    refetchInterval: resolvedRefetchInterval,
     refetchIntervalInBackground: false,
   });
 }

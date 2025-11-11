@@ -18,6 +18,7 @@ const mockUseStores = vi.fn();
 const mockUseMonitoringChangeLogs = vi.fn();
 const mockUseMarkMonitoringChangeLogsRead = vi.fn();
 const mockUsePageVisibility = vi.fn();
+const mockGetMonitoringChangeLogs = vi.fn();
 
 vi.mock('../../hooks/useStores', () => ({
   useStores: () => mockUseStores(),
@@ -32,10 +33,15 @@ vi.mock('../../hooks/usePageVisibility', () => ({
   usePageVisibility: () => mockUsePageVisibility(),
 }));
 
+vi.mock('../../services/api', () => ({
+  getMonitoringChangeLogs: (...args: unknown[]) => mockGetMonitoringChangeLogs(...args),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockUsePageVisibility.mockReturnValue(true);
   navigateMock.mockReset();
+  mockGetMonitoringChangeLogs.mockResolvedValue({ entries: [] });
 });
 
 function renderPage() {

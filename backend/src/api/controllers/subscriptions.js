@@ -177,7 +177,7 @@ async function insertBaselineChangeLog(subscriptionDoc, session) {
     absolute_change,
     percentage_change,
     detected_at: now,
-    read_at: null,
+    read_at: now,
     is_baseline: true,
     created_at: now
   };
@@ -191,8 +191,8 @@ async function insertBaselineChangeLog(subscriptionDoc, session) {
   await counters.updateOne(
     { subscription_id: subscriptionDoc._id },
     {
-      $inc: { unread_count: 1 },
-      $set: { updated_at: now }
+      $set: { updated_at: now },
+      $setOnInsert: { unread_count: 0 }
     },
     { session, upsert: true }
   );
@@ -232,9 +232,9 @@ export async function createSubscription(req, res, next) {
           updated_at: now
         }, { session });
 
-        const baselineResult = await insertBaselineChangeLog(document, session);
-        document.unread_count = 1;
-        document.unread_updated_at = baselineResult.detectedAt;
+        await insertBaselineChangeLog(document, session);
+        document.unread_count = 0;
+        document.unread_updated_at = null;
         created = document;
       });
     } catch (error) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { MonitoringChangeType, MonitoringScopeType } from '../../types';
 
 export interface SubscriptionFormValues {
@@ -29,6 +29,19 @@ const DEFAULT_VALUES: SubscriptionFormValues = {
   changeType: 'both',
 };
 
+function areSubscriptionFormValuesEqual(
+  a: SubscriptionFormValues,
+  b: SubscriptionFormValues
+) {
+  return (
+    a.scopeType === b.scopeType &&
+    a.storeId === b.storeId &&
+    a.productId === b.productId &&
+    a.productType === b.productType &&
+    a.changeType === b.changeType
+  );
+}
+
 function MonitoringSubscriptionForm({
   mode,
   initialValues,
@@ -44,6 +57,9 @@ function MonitoringSubscriptionForm({
     initialValues ?? { ...DEFAULT_VALUES }
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  const previousInitialValuesRef = useRef<SubscriptionFormValues | null>(
+    initialValues ? { ...initialValues } : null
+  );
 
   const storeDatalistId = useId();
   const productTypeDatalistId = useId();
@@ -91,9 +107,19 @@ function MonitoringSubscriptionForm({
 
   useEffect(() => {
     if (!initialValues) {
+      previousInitialValuesRef.current = null;
       return;
     }
 
+    const previousInitialValues = previousInitialValuesRef.current;
+    if (
+      previousInitialValues &&
+      areSubscriptionFormValuesEqual(previousInitialValues, initialValues)
+    ) {
+      return;
+    }
+
+    previousInitialValuesRef.current = { ...initialValues };
     setValues({ ...initialValues });
   }, [initialValues]);
 

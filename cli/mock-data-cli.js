@@ -880,7 +880,7 @@ function buildChangeLogDocument(subscription, previousValue, currentValue, detec
     absolute_change,
     percentage_change,
     detected_at: detectedAt,
-    read_at: null,
+    read_at: isBaseline ? detectedAt : null,
     is_baseline: isBaseline,
     created_at: detectedAt,
     store_name: storeName ?? null,
@@ -967,8 +967,8 @@ async function maybeRecordProductChangeLog(collections, payload) {
       await changeCountersCollection.updateOne(
         { subscription_id: subscription._id },
         {
-          $inc: { unread_count: 1 },
-          $set: { updated_at: detectedAt }
+          $set: { updated_at: detectedAt },
+          $setOnInsert: { unread_count: 0 }
         },
         { upsert: true }
       );
@@ -1007,8 +1007,8 @@ async function maybeRecordProductChangeLog(collections, payload) {
     await changeCountersCollection.updateOne(
       { subscription_id: subscription._id },
       {
-        $inc: { unread_count: 1 },
-        $set: { updated_at: detectedAt }
+        $set: { updated_at: detectedAt },
+        $setOnInsert: { unread_count: 0 }
       },
       { upsert: true }
     );

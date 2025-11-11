@@ -20,12 +20,18 @@ export function parseProduct(productJson) {
   };
 
   // Extract variants data
-  const variantsData = (productJson.variants || []).map(variant => ({
-    variant_id: variant.id,
-    variant_title: variant.title,
-    price: parseFloat(variant.price),
-    image_url: variant.featured_image?.src || null
-  }));
+  const variantsData = (productJson.variants || []).map(variant => {
+    // Validate price to prevent NaN corruption in analytics
+    const parsedPrice = parseFloat(variant.price);
+    const validPrice = !isNaN(parsedPrice) && variant.price != null ? parsedPrice : null;
+
+    return {
+      variant_id: variant.id,
+      variant_title: variant.title,
+      price: validPrice,
+      image_url: variant.featured_image?.src || null
+    };
+  });
 
   return {
     productData,

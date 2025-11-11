@@ -35,6 +35,16 @@ export function getDb() {
 }
 
 /**
+ * Get MongoClient instance (needed for transactions)
+ */
+export function getClient() {
+  if (!client) {
+    throw new Error('Database not connected. Call connect() first.');
+  }
+  return client;
+}
+
+/**
  * Close database connection
  */
 export async function close() {

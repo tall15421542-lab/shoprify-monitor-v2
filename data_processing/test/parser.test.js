@@ -122,5 +122,27 @@ describe('Parser', () => {
       assert.strictEqual(typeof variantsData[1].price, 'number');
       assert.strictEqual(variantsData[1].price, 20.99);
     });
+
+    it('should handle invalid prices (null, undefined, NaN) by returning null', () => {
+      const product = {
+        id: 12345,
+        handle: 'test',
+        title: 'Test',
+        variants: [
+          { id: 1, title: 'V1', price: null },
+          { id: 2, title: 'V2', price: undefined },
+          { id: 3, title: 'V3', price: 'invalid' },
+          { id: 4, title: 'V4', price: '' }
+        ]
+      };
+
+      const { variantsData } = parseProduct(product);
+
+      // All invalid prices should be converted to null, not NaN
+      assert.strictEqual(variantsData[0].price, null);
+      assert.strictEqual(variantsData[1].price, null);
+      assert.strictEqual(variantsData[2].price, null);
+      assert.strictEqual(variantsData[3].price, null);
+    });
   });
 });

@@ -148,6 +148,109 @@ describe('Monitoring API', () => {
     assert.strictEqual(data.subscriptions[0].unread_count, 0);
   });
 
+  it('batches unread change logs per subscription without N+1 queries', async () => {
+    const payloadA = {
+      scope_type: 'product',
+      scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
+      change_type: 'price_down',
+      interval_minutes: 60
+    };
+
+    const payloadB = {
+      scope_type: 'product',
+      scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
+      change_type: 'price_up',
+      interval_minutes: 45
+    };
+
+    const createdA = await createSubscription(payloadA);
+    const createdB = await createSubscription(payloadB);
+    const subscriptionIdA = new ObjectId(createdA.data.id);
+    const subscriptionIdB = new ObjectId(createdB.data.id);
+
+    const db = getDb();
+    const now = new Date();
+
+    // Mark baseline rows as read so they are not part of unread assertions.
+    await db.collection('change_logs').updateMany(
+      { subscription_id: { $in: [subscriptionIdA, subscriptionIdB] } },
+      { $set: { read_at: now } }
+    );
+
+    const unreadLogsA = Array.from({ length: 12 }, (_, index) => ({
+      subscription_id: subscriptionIdA,
+      scope_type: 'product',
+      scope_key: payloadA.scope_key,
+      change_type: 'price_down',
+      current_value: 100 - index,
+      previous_value: 99.5 - index,
+      absolute_change: 0.5,
+      percentage_change: 0.5,
+      detected_at: new Date(now.getTime() - index * 1000),
+      read_at: null,
+      is_baseline: false
+    }));
+
+    const unreadLogsB = Array.from({ length: 3 }, (_, index) => ({
+      subscription_id: subscriptionIdB,
+      scope_type: 'product',
+      scope_key: payloadB.scope_key,
+      change_type: 'price_up',
+      current_value: 100 + index,
+      previous_value: 99 + index,
+      absolute_change: 1,
+      percentage_change: 1,
+      detected_at: new Date(now.getTime() - index * 2000),
+      read_at: null,
+      is_baseline: false
+    }));
+
+    await db.collection('change_logs').insertMany([...unreadLogsA, ...unreadLogsB]);
+
+    await Promise.all([
+      db.collection('change_read_counters').updateOne(
+        { subscription_id: subscriptionIdA },
+        { $set: { unread_count: unreadLogsA.length, updated_at: now } }
+      ),
+      db.collection('change_read_counters').updateOne(
+        { subscription_id: subscriptionIdB },
+        { $set: { unread_count: unreadLogsB.length, updated_at: now } }
+      )
+    ]);
+
+    const response = await fetch(`${baseUrl}/subscriptions`);
+    const data = await response.json();
+
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(data.count, 2);
+
+    const subscriptionA = data.subscriptions.find((sub) => sub.id === createdA.data.id);
+    const subscriptionB = data.subscriptions.find((sub) => sub.id === createdB.data.id);
+
+    assert(subscriptionA);
+    assert(subscriptionB);
+
+    assert.strictEqual(subscriptionA.unread_count, unreadLogsA.length);
+    assert.strictEqual(subscriptionA.unread_change_logs.length, 10);
+    assert.strictEqual(
+      new Date(subscriptionA.unread_change_logs[0].detected_at).getTime(),
+      unreadLogsA[0].detected_at.getTime()
+    );
+    for (let i = 1; i < subscriptionA.unread_change_logs.length; i += 1) {
+      const prev = new Date(subscriptionA.unread_change_logs[i - 1].detected_at);
+      const curr = new Date(subscriptionA.unread_change_logs[i].detected_at);
+      assert.ok(prev >= curr);
+    }
+
+    assert.strictEqual(subscriptionB.unread_count, unreadLogsB.length);
+    assert.strictEqual(subscriptionB.unread_change_logs.length, unreadLogsB.length);
+    for (let i = 1; i < subscriptionB.unread_change_logs.length; i += 1) {
+      const prev = new Date(subscriptionB.unread_change_logs[i - 1].detected_at);
+      const curr = new Date(subscriptionB.unread_change_logs[i].detected_at);
+      assert.ok(prev >= curr);
+    }
+  });
+
   it('updates subscription interval', async () => {
     const payload = {
       scope_type: 'product',

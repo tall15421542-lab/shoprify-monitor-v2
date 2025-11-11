@@ -275,31 +275,58 @@ export async function listSubscriptions(req, res, next) {
       ])
     );
 
+    const unreadSubscriptionIds = [];
+    for (const doc of docs) {
+      const counter = counterMap.get(doc._id.toString());
+      if (counter) {
+        doc.unread_count = counter.unread_count;
+        doc.unread_updated_at = counter.unread_updated_at;
+      } else {
+        doc.unread_count = 0;
+        doc.unread_updated_at = null;
+      }
+
+      if (doc.unread_count > 0) {
+        unreadSubscriptionIds.push(doc._id);
+      }
+    }
+
+    let unreadLogsBySubscription = new Map();
+
+    if (unreadSubscriptionIds.length > 0) {
+      const unreadResults = await changeLogs
+        .aggregate([
+          {
+            $match: {
+              subscription_id: { $in: unreadSubscriptionIds },
+              read_at: null
+            }
+          },
+          { $sort: { detected_at: -1 } },
+          {
+            $group: {
+              _id: '$subscription_id',
+              entries: { $push: '$$ROOT' }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              subscription_id: '$_id',
+              entries: { $slice: ['$entries', MAX_INLINE_UNREAD_LOGS] }
+            }
+          }
+        ])
+        .toArray();
+
+      unreadLogsBySubscription = new Map(
+        unreadResults.map((result) => [result.subscription_id.toString(), result.entries])
+      );
+    }
+
     const normalized = await Promise.all(
       docs.map(async (doc) => {
-        const counter = counterMap.get(doc._id.toString());
-        if (counter) {
-          doc.unread_count = counter.unread_count;
-          doc.unread_updated_at = counter.unread_updated_at;
-        } else {
-          doc.unread_count = 0;
-          doc.unread_updated_at = null;
-        }
-
-        if (doc.unread_count > 0) {
-          const limit = Math.min(doc.unread_count, MAX_INLINE_UNREAD_LOGS);
-          doc.unread_change_logs = await changeLogs
-            .find({
-              subscription_id: doc._id,
-              read_at: null,
-            })
-            .sort({ detected_at: -1 })
-            .limit(limit)
-            .toArray();
-        } else {
-          doc.unread_change_logs = [];
-        }
-
+        doc.unread_change_logs = unreadLogsBySubscription.get(doc._id.toString()) ?? [];
         const normalizedDoc = normalizeSubscriptionDocument(doc);
         if (normalizedDoc) {
           normalizedDoc.unread_change_logs = Array.isArray(doc.unread_change_logs)

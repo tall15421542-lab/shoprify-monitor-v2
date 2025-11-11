@@ -20,6 +20,10 @@ export async function ensureMonitoringCollections() {
     subscriptions.createIndex({ scope_type: 1 }),
     subscriptions.createIndex({ scope_hash: 1 }, { unique: true }),
     changeLogs.createIndex({ subscription_id: 1, detected_at: -1 }),
+    changeLogs.createIndex(
+      { read_at: 1, detected_at: -1 },
+      { partialFilterExpression: { read_at: null } }
+    ),
     counters.createIndex({ subscription_id: 1 }, { unique: true })
   ]);
 

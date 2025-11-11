@@ -6,7 +6,20 @@ import http from 'http';
 describe('Express Server', () => {
   let app;
   let server;
-  const port = 3001; // Use different port for testing
+  let port;
+
+  const startServer = () =>
+    new Promise((resolve, reject) => {
+      const instance = app.listen(0, () => {
+        const address = instance.address();
+        if (typeof address === 'object' && address && 'port' in address) {
+          resolve({ server: instance, port: address.port });
+        } else {
+          reject(new Error('Unable to determine server port'));
+        }
+      });
+      instance.on('error', reject);
+    });
 
   beforeEach(() => {
     app = createApp();
@@ -15,6 +28,8 @@ describe('Express Server', () => {
   afterEach(async () => {
     if (server) {
       await new Promise((resolve) => server.close(resolve));
+      server = undefined;
+      port = undefined;
     }
   });
 
@@ -24,7 +39,7 @@ describe('Express Server', () => {
   });
 
   it('should respond to health check', async () => {
-    server = app.listen(port);
+    ({ server, port } = await startServer());
     
     const response = await fetch(`http://localhost:${port}/health`);
     const data = await response.json();
@@ -35,7 +50,7 @@ describe('Express Server', () => {
   });
 
   it('should return 404 for unknown routes', async () => {
-    server = app.listen(port);
+    ({ server, port } = await startServer());
     
     const response = await fetch(`http://localhost:${port}/unknown-route`);
     const data = await response.json();
@@ -45,7 +60,7 @@ describe('Express Server', () => {
   });
 
   it('should handle CORS', async () => {
-    server = app.listen(port);
+    ({ server, port } = await startServer());
     
     const response = await fetch(`http://localhost:${port}/health`);
     

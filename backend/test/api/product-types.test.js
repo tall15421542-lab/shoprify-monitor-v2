@@ -344,7 +344,6 @@ describe('Product Types Endpoints', () => {
         scope_key: { product_type: 'Watched Type' },
         scope_hash: 'product_type:Watched Type',
         change_type: 'both',
-        interval_minutes: 60,
         created_at: new Date(),
         updated_at: new Date()
       });
@@ -609,7 +608,6 @@ describe('Product Types Endpoints', () => {
           scope_key: { product_type: 'Flag Type' },
           scope_hash: 'product_type:Flag Type',
           change_type: 'both',
-          interval_minutes: 60,
           created_at: new Date(),
           updated_at: new Date()
         },
@@ -618,7 +616,6 @@ describe('Product Types Endpoints', () => {
           scope_key: { store_id: storeId.toString(), product_type: 'Flag Type' },
           scope_hash: `store_product_type:${storeId.toString()}:Flag Type`,
           change_type: 'price_up',
-          interval_minutes: 30,
           created_at: new Date(),
           updated_at: new Date()
         }

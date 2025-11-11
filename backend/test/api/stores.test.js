@@ -318,7 +318,6 @@ describe('Store Management Endpoints', () => {
         scope_key: { store_id: monitoredStoreId },
         scope_hash: `store:${monitoredStoreId}`,
         change_type: 'both',
-        interval_minutes: 60,
         created_at: new Date(),
         updated_at: new Date()
       });

@@ -1,6 +1,26 @@
 import { getDb } from '../database/connection.js';
 import { evaluateAggregatedSubscriptions } from './monitoring.js';
 
+let evaluateAggregatedSubscriptionsImpl = evaluateAggregatedSubscriptions;
+let getDbImpl = getDb;
+
+export function setEvaluateAggregatedSubscriptionsImplementation(implementation) {
+  evaluateAggregatedSubscriptionsImpl =
+    typeof implementation === 'function' ? implementation : evaluateAggregatedSubscriptions;
+}
+
+export function resetEvaluateAggregatedSubscriptionsImplementation() {
+  evaluateAggregatedSubscriptionsImpl = evaluateAggregatedSubscriptions;
+}
+
+export function setDatabaseAccessor(accessor) {
+  getDbImpl = typeof accessor === 'function' ? accessor : getDb;
+}
+
+export function resetDatabaseAccessor() {
+  getDbImpl = getDb;
+}
+
 async function getActiveStoreIds(db) {
   const storesCollection = db.collection('stores');
   const stores = await storesCollection
@@ -15,7 +35,7 @@ async function getActiveStoreIds(db) {
  * @param {Date} windowEnd - End of the hour window
  */
 export async function aggregateStoreAverages(windowStart, windowEnd) {
-  const db = getDb();
+  const db = getDbImpl();
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyStoreAvgCollection = db.collection('hourly_store_avg');
 
@@ -78,7 +98,7 @@ export async function aggregateStoreAverages(windowStart, windowEnd) {
     }));
 
     await hourlyStoreAvgCollection.bulkWrite(bulkOps);
-    await evaluateAggregatedSubscriptions('store', results, windowEnd);
+    await evaluateAggregatedSubscriptionsImpl('store', results, windowEnd);
     console.log(`✓ Aggregated ${results.length} store average(s) for window ${windowStart.toISOString()}`);
   } else {
     console.log(`No data to aggregate for window ${windowStart.toISOString()}`);
@@ -93,7 +113,7 @@ export async function aggregateStoreAverages(windowStart, windowEnd) {
  * @param {Date} windowEnd - End of the hour window
  */
 export async function aggregateTagAverages(windowStart, windowEnd) {
-  const db = getDb();
+  const db = getDbImpl();
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyTagAvgCollection = db.collection('hourly_tag_avg');
 
@@ -173,7 +193,7 @@ export async function aggregateTagAverages(windowStart, windowEnd) {
  * @param {Date} windowEnd - End of the hour window
  */
 export async function aggregateStoreTagAverages(windowStart, windowEnd) {
-  const db = getDb();
+  const db = getDbImpl();
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyStoreTagAvgCollection = db.collection('hourly_store_tag_avg');
 
@@ -258,7 +278,7 @@ export async function aggregateStoreTagAverages(windowStart, windowEnd) {
  * @param {Date} windowEnd - End of the hour window
  */
 export async function aggregateProductTypeAverages(windowStart, windowEnd) {
-  const db = getDb();
+  const db = getDbImpl();
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyProductTypeAvgCollection = db.collection('hourly_product_type_avg');
 
@@ -325,7 +345,7 @@ export async function aggregateProductTypeAverages(windowStart, windowEnd) {
     }));
 
     await hourlyProductTypeAvgCollection.bulkWrite(bulkOps);
-    await evaluateAggregatedSubscriptions('product_type', results, windowEnd);
+    await evaluateAggregatedSubscriptionsImpl('product_type', results, windowEnd);
     console.log(`✓ Aggregated ${results.length} product type average(s) for window ${windowStart.toISOString()}`);
   } else {
     console.log(`No product type data to aggregate for window ${windowStart.toISOString()}`);
@@ -340,7 +360,7 @@ export async function aggregateProductTypeAverages(windowStart, windowEnd) {
  * @param {Date} windowEnd - End of the hour window
  */
 export async function aggregateStoreProductTypeAverages(windowStart, windowEnd) {
-  const db = getDb();
+  const db = getDbImpl();
   const priceSnapshotsCollection = db.collection('price_snapshots');
   const hourlyStoreProductTypeAvgCollection = db.collection('hourly_store_product_type_avg');
 
@@ -409,7 +429,7 @@ export async function aggregateStoreProductTypeAverages(windowStart, windowEnd) 
     }));
 
     await hourlyStoreProductTypeAvgCollection.bulkWrite(bulkOps);
-    await evaluateAggregatedSubscriptions('store_product_type', results, windowEnd);
+    await evaluateAggregatedSubscriptionsImpl('store_product_type', results, windowEnd);
     console.log(`✓ Aggregated ${results.length} store-product-type average(s) for window ${windowStart.toISOString()}`);
   } else {
     console.log(`No store-product-type data to aggregate for window ${windowStart.toISOString()}`);

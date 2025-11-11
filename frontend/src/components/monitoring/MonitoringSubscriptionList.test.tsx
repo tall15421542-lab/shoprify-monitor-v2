@@ -10,7 +10,6 @@ const createSubscription = (overrides: Partial<MonitoringSubscription> = {}): Mo
     scopeType: 'store',
     scope: { storeId: 'store-1' },
     changeType: 'both',
-    intervalMinutes: 15,
     unreadCount: 3,
     unreadUpdatedAt: new Date('2024-01-01T00:30:00Z'),
     unreadChangeLogs: [],
@@ -52,7 +51,6 @@ describe('MonitoringSubscriptionList', () => {
         scopeType: 'product',
         scope: { storeId: 'store-42', productId: 'prod-9' },
         changeType: 'price_down',
-        intervalMinutes: 60,
       }),
     ];
 
@@ -70,7 +68,6 @@ describe('MonitoringSubscriptionList', () => {
     expect(screen.getByText(/Product prod-9/i)).toBeInTheDocument();
     expect(screen.getByText(/Any change/i)).toBeInTheDocument();
     expect(screen.getByText(/Price down/i)).toBeInTheDocument();
-    expect(screen.getByText(/Every 60 min/i)).toBeInTheDocument();
     expect(
       screen.getByText((content, node) => node?.textContent === '5')
     ).toBeInTheDocument();

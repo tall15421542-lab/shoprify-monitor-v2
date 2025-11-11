@@ -45,7 +45,6 @@ function subscriptionToFormValues(
         productId: '',
         productType: '',
         changeType: subscription.changeType,
-        intervalMinutes: subscription.intervalMinutes,
       };
     case 'product':
       return {
@@ -54,7 +53,6 @@ function subscriptionToFormValues(
         productId: scope.productId ?? '',
         productType: '',
         changeType: subscription.changeType,
-        intervalMinutes: subscription.intervalMinutes,
       };
     case 'product_type':
       return {
@@ -63,7 +61,6 @@ function subscriptionToFormValues(
         productId: '',
         productType: scope.productType ?? '',
         changeType: subscription.changeType,
-        intervalMinutes: subscription.intervalMinutes,
       };
     case 'store_product_type':
       return {
@@ -72,7 +69,6 @@ function subscriptionToFormValues(
         productId: '',
         productType: scope.productType ?? '',
         changeType: subscription.changeType,
-        intervalMinutes: subscription.intervalMinutes,
       };
     default:
       return {
@@ -81,7 +77,6 @@ function subscriptionToFormValues(
         productId: '',
         productType: '',
         changeType: subscription.changeType,
-        intervalMinutes: subscription.intervalMinutes,
       };
   }
 }
@@ -402,7 +397,6 @@ function MonitoringSubscriptionsPage() {
       scopeType: values.scopeType,
       scope,
       changeType: values.changeType,
-      intervalMinutes: values.intervalMinutes,
     });
     showToast('success', 'Subscription created successfully.');
     setIsCreateOpen(false);
@@ -420,7 +414,6 @@ function MonitoringSubscriptionsPage() {
         scopeType: values.scopeType,
         scope,
         changeType: values.changeType,
-        intervalMinutes: values.intervalMinutes,
       },
     });
     showToast('success', 'Subscription updated successfully.');
@@ -525,8 +518,7 @@ function MonitoringSubscriptionsPage() {
                       {formatScopeTypeLabel(selectedSubscription.scopeType)}
                     </h3>
                     <p className="text-sm text-gray-500">
-                      Interval every {selectedSubscription.intervalMinutes} minutes •{' '}
-                      {formatChangeType(selectedSubscription.changeType)}
+                      Alerts on: {formatChangeType(selectedSubscription.changeType)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

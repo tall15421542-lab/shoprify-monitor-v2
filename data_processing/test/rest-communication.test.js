@@ -1,17 +1,71 @@
-import { describe, it, before, after, mock } from 'node:test';
+import { describe, it, before, after, beforeEach, mock } from 'node:test';
 import assert from 'node:assert';
+import { createAggregatorController } from '../src/api/aggregator-controller.js';
+import { createPollerController } from '../src/api/poller-controller.js';
+import { createTriggerApp } from '../src/api/server.js';
+import { createApp as createBackendApp } from '../../backend/src/api/server.js';
 
 // Set environment variable BEFORE importing modules
 const backendPort = 3099;
 const triggerPort = 3098;
 process.env.TRIGGER_API_URL = `http://localhost:${triggerPort}`;
 
-import { createApp as createBackendApp } from '../backend/src/api/server.js';
-import { createTriggerApp } from '../src/api/server.js';
-import * as connection from '../src/database/connection.js';
-import * as aggregatorService from '../src/services/aggregator.js';
-import * as pollerService from '../src/services/poller.js';
-import * as schedulerService from '../src/services/scheduler.js';
+const aggregationResults = {
+  store: 1,
+  tag: 2,
+  storeTag: 3,
+  productType: 4,
+  storeProductType: 5
+};
+
+const aggregatorMocks = {
+  aggregateStoreAverages: mock.fn(async () => aggregationResults.store),
+  aggregateTagAverages: mock.fn(async () => aggregationResults.tag),
+  aggregateStoreTagAverages: mock.fn(async () => aggregationResults.storeTag),
+  aggregateProductTypeAverages: mock.fn(async () => aggregationResults.productType),
+  aggregateStoreProductTypeAverages: mock.fn(async () => aggregationResults.storeProductType)
+};
+
+const pollerMocks = {
+  pollStore: mock.fn(async () => ({
+    saved: 1,
+    errors: [],
+    snapshots: 1
+  })),
+  pollAllStores: mock.fn(async () => ({
+    totalStores: 1,
+    successfulStores: 1,
+    failedStores: 0,
+    totalProducts: 42
+  }))
+};
+
+const schedulerMocks = {
+  runAggregations: mock.fn(async () => ({
+    success: true,
+    storeCount: aggregationResults.store,
+    tagCount: aggregationResults.tag,
+    storeTagCount: aggregationResults.storeTag,
+    productTypeCount: aggregationResults.productType,
+    storeProductTypeCount: aggregationResults.storeProductType
+  }))
+};
+
+const connectionMocks = {
+  connect: mock.fn(async () => {}),
+  close: mock.fn(async () => {}),
+  getDb: mock.fn(() => {
+    throw new Error('getDb should not be called in mocked REST communication tests');
+  })
+};
+
+const aggregatorController = createAggregatorController(aggregatorMocks);
+const pollerController = createPollerController({
+  pollStore: pollerMocks.pollStore,
+  pollAllStores: pollerMocks.pollAllStores,
+  getDb: connectionMocks.getDb,
+  runAggregations: schedulerMocks.runAggregations
+});
 
 /**
  * Test to verify REST communication between backend and src servers
@@ -23,47 +77,23 @@ describe('REST Communication Between Servers', () => {
   let triggerServer;
   const backendUrl = `http://localhost:${backendPort}`;
 
+  function resetMockCalls() {
+    Object.values(aggregatorMocks).forEach((fn) => fn.mock.resetCalls());
+    Object.values(pollerMocks).forEach((fn) => fn.mock.resetCalls());
+    Object.values(schedulerMocks).forEach((fn) => fn.mock.resetCalls());
+    Object.values(connectionMocks).forEach((fn) => fn.mock.resetCalls?.());
+  }
+
   before(async () => {
-    mock.restoreAll();
-
-    mock.method(connection, 'connect', async () => {});
-    mock.method(connection, 'close', async () => {});
-    mock.method(connection, 'getDb', () => {
-      throw new Error('getDb should not be called in mocked REST communication tests');
-    });
-
-    const aggregationResults = {
-      store: 1,
-      tag: 2,
-      storeTag: 3,
-      productType: 4,
-      storeProductType: 5
-    };
-
-    mock.method(aggregatorService, 'aggregateStoreAverages', async () => aggregationResults.store);
-    mock.method(aggregatorService, 'aggregateTagAverages', async () => aggregationResults.tag);
-    mock.method(aggregatorService, 'aggregateStoreTagAverages', async () => aggregationResults.storeTag);
-    mock.method(aggregatorService, 'aggregateProductTypeAverages', async () => aggregationResults.productType);
-    mock.method(aggregatorService, 'aggregateStoreProductTypeAverages', async () => aggregationResults.storeProductType);
-
-    mock.method(pollerService, 'pollAllStores', async () => ({
-      totalStores: 1,
-      successfulStores: 1,
-      failedStores: 0,
-      totalProducts: 42
-    }));
-
-    mock.method(schedulerService, 'runAggregations', async () => ({
-      success: true,
-      storeCount: aggregationResults.store,
-      tagCount: aggregationResults.tag,
-      storeTagCount: aggregationResults.storeTag,
-      productTypeCount: aggregationResults.productType,
-      storeProductTypeCount: aggregationResults.storeProductType
-    }));
-
     // Start trigger server (src)
-    triggerApp = createTriggerApp();
+    triggerApp = createTriggerApp({
+      routeOverrides: {
+        triggerAggregation: aggregatorController.triggerAggregation,
+        triggerCurrentHourAggregation: aggregatorController.triggerCurrentHourAggregation,
+        triggerStorePoll: pollerController.triggerStorePoll,
+        triggerAllStoresPoll: pollerController.triggerAllStoresPoll
+      }
+    });
     triggerServer = triggerApp.listen(triggerPort);
     console.log(`  ✓ Trigger server started on port ${triggerPort}`);
 
@@ -76,10 +106,13 @@ describe('REST Communication Between Servers', () => {
     await new Promise(resolve => setTimeout(resolve, 500));
   });
 
+  beforeEach(() => {
+    resetMockCalls();
+  });
+
   after(async () => {
     await new Promise((resolve) => triggerServer.close(resolve));
     await new Promise((resolve) => backendServer.close(resolve));
-    await connection.close();
     mock.restoreAll();
     delete process.env.TRIGGER_API_URL;
   });
@@ -96,6 +129,10 @@ describe('REST Communication Between Servers', () => {
       // Verify response structure from trigger API
       assert.ok(data.message);
       assert.ok(data.results);
+    assert.strictEqual(data.results.totalStores, 1);
+    assert.strictEqual(data.results.successfulStores, 1);
+    assert.strictEqual(data.results.failedStores, 0);
+    assert.strictEqual(data.results.totalProducts, 42);
       console.log('  ✓ Backend successfully communicated with trigger API via REST');
     });
 
@@ -111,6 +148,11 @@ describe('REST Communication Between Servers', () => {
       assert.ok(data.message);
       assert.ok(data.window);
       assert.ok(data.results);
+    assert.strictEqual(data.results.store_averages, aggregationResults.store);
+    assert.strictEqual(data.results.tag_averages, aggregationResults.tag);
+    assert.strictEqual(data.results.store_tag_averages, aggregationResults.storeTag);
+    assert.strictEqual(data.results.product_type_averages, aggregationResults.productType);
+    assert.strictEqual(data.results.store_product_type_averages, aggregationResults.storeProductType);
       console.log('  ✓ Backend successfully proxied aggregation request via REST');
     });
 

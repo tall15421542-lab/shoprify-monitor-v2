@@ -38,7 +38,7 @@ describe('Monitoring Service', () => {
     ]);
   });
 
-  it('evaluates product subscription changes against interval threshold', async () => {
+  it('records product changes whenever the price differs', async () => {
     const db = getDb();
     const now = new Date();
     const storeId = 'store-1';
@@ -47,7 +47,6 @@ describe('Monitoring Service', () => {
       scope_key: { store_id: storeId, product_id: 'prod-1' },
       scope_hash: 'product:store-1:prod-1',
       change_type: 'both',
-      interval_minutes: 60,
       created_at: now,
       updated_at: now
     };
@@ -64,7 +63,7 @@ describe('Monitoring Service', () => {
       previous_value: 100,
       absolute_change: 0,
       percentage_change: 0,
-      detected_at: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+      detected_at: new Date(now.getTime() - 5 * 60 * 1000),
       read_at: now,
       is_baseline: true,
       created_at: now
@@ -103,7 +102,6 @@ describe('Monitoring Service', () => {
       scope_key: { store_id: 'store-meta', product_id: 'prod-meta' },
       scope_hash: 'product:store-meta:prod-meta',
       change_type: 'both',
-      interval_minutes: 60,
       created_at: now,
       updated_at: now
     };
@@ -157,7 +155,6 @@ describe('Monitoring Service', () => {
       scope_key: { store_id: 'store-1', product_id: 'prod-2' },
       scope_hash: 'product:store-1:prod-2',
       change_type: 'price_up',
-      interval_minutes: 60,
       created_at: now,
       updated_at: now
     };
@@ -204,7 +201,6 @@ describe('Monitoring Service', () => {
       scope_key: { store_id: 'store-3', product_id: 'prod-3' },
       scope_hash: 'product:store-3:prod-3',
       change_type: 'price_down',
-      interval_minutes: 30,
       created_at: now,
       updated_at: now
     };
@@ -252,7 +248,6 @@ describe('Monitoring Service', () => {
       scope_key: { store_id: 'store-4', product_id: 'prod-4' },
       scope_hash: 'product:store-4:prod-4',
       change_type: 'both',
-      interval_minutes: 45,
       created_at: now,
       updated_at: now
     };
@@ -302,7 +297,6 @@ describe('Monitoring Service', () => {
       scope_key: { store_id: storeId, product_id: 'prod-42' },
       scope_hash: 'product:store-2:prod-42',
       change_type: 'price_up',
-      interval_minutes: 30,
       created_at: now,
       updated_at: now
     };
@@ -327,7 +321,6 @@ describe('Monitoring Service', () => {
       scope_key: { store_id: storeIdStr },
       scope_hash: `store:${storeIdStr}`,
       change_type: 'price_up',
-      interval_minutes: 15,
       created_at: now,
       updated_at: now
     };
@@ -385,7 +378,6 @@ describe('Monitoring Service', () => {
         scope_key: { store_id: storeId },
         scope_hash: `store:${storeId}`,
         change_type: 'both',
-        interval_minutes: 60,
         created_at: new Date(),
         updated_at: new Date()
       },
@@ -394,7 +386,6 @@ describe('Monitoring Service', () => {
         scope_key: { store_id: storeId, product_id: productId },
         scope_hash: `product:${storeId}:${productId}`,
         change_type: 'price_up',
-        interval_minutes: 30,
         created_at: new Date(),
         updated_at: new Date()
       },
@@ -403,7 +394,6 @@ describe('Monitoring Service', () => {
         scope_key: { product_type: productType },
         scope_hash: `product_type:${productType}`,
         change_type: 'both',
-        interval_minutes: 45,
         created_at: new Date(),
         updated_at: new Date()
       },
@@ -412,7 +402,6 @@ describe('Monitoring Service', () => {
         scope_key: { store_id: storeId, product_type: productType },
         scope_hash: `store_product_type:${storeId}:${productType}`,
         change_type: 'both',
-        interval_minutes: 45,
         created_at: new Date(),
         updated_at: new Date()
       }

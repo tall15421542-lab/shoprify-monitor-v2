@@ -156,9 +156,7 @@ function StoreCard({ store, onUpdate }: StoreCardProps) {
             label={subscribeLabel}
             className="disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!isActive}
-            autoSubscribe
             defaultChangeType="both"
-            defaultIntervalMinutes={Math.max(1, store.pollingInterval || 60)}
             onSubscriptionSuccess={() => setIsSubscribed(true)}
           />
           {isActive && (

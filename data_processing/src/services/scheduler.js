@@ -7,6 +7,27 @@ import {
   aggregateStoreProductTypeAverages
 } from './aggregator.js';
 
+const defaultAggregationService = {
+  aggregateStoreAverages,
+  aggregateTagAverages,
+  aggregateStoreTagAverages,
+  aggregateProductTypeAverages,
+  aggregateStoreProductTypeAverages
+};
+
+let aggregationService = { ...defaultAggregationService };
+
+export function setAggregationService(overrides = {}) {
+  aggregationService = {
+    ...defaultAggregationService,
+    ...overrides
+  };
+}
+
+export function resetAggregationService() {
+  aggregationService = { ...defaultAggregationService };
+}
+
 let scheduledTask = null;
 let isRunning = false;
 
@@ -35,11 +56,12 @@ export async function runAggregations(windowStart, windowEnd) {
 
   try {
     // Run all aggregations
-    const storeCount = await aggregateStoreAverages(windowStart, windowEnd);
-    const tagCount = await aggregateTagAverages(windowStart, windowEnd);
-    const storeTagCount = await aggregateStoreTagAverages(windowStart, windowEnd);
-    const productTypeCount = await aggregateProductTypeAverages(windowStart, windowEnd);
-    const storeProductTypeCount = await aggregateStoreProductTypeAverages(windowStart, windowEnd);
+    const storeCount = await aggregationService.aggregateStoreAverages(windowStart, windowEnd);
+    const tagCount = await aggregationService.aggregateTagAverages(windowStart, windowEnd);
+    const storeTagCount = await aggregationService.aggregateStoreTagAverages(windowStart, windowEnd);
+    const productTypeCount = await aggregationService.aggregateProductTypeAverages(windowStart, windowEnd);
+    const storeProductTypeCount =
+      await aggregationService.aggregateStoreProductTypeAverages(windowStart, windowEnd);
 
     console.log(`✅ Aggregation completed successfully:`);
     console.log(`   - ${storeCount} store averages`);

@@ -120,9 +120,9 @@ describe('Poller Controller Tests', () => {
       assert.strictEqual(response.status, 200);
       assert.ok(data.message);
       assert.ok(data.results);
-      assert.strictEqual(data.results.total_stores, 1);
-      assert.strictEqual(data.results.successful_stores, 0);
-      assert.strictEqual(data.results.failed_stores, 1);
+      assert.strictEqual(data.results.totalStores, 1);
+      assert.strictEqual(data.results.successfulStores, 0);
+      assert.strictEqual(data.results.failedStores, 1);
     });
 
     it('should handle case with no stores gracefully', async () => {
@@ -139,7 +139,7 @@ describe('Poller Controller Tests', () => {
       // Should succeed with 0 stores
       assert.strictEqual(response.status, 200);
       assert.ok(data.message);
-      assert.strictEqual(data.results.total_stores, 0);
+      assert.strictEqual(data.results.totalStores, 0);
     });
   });
 

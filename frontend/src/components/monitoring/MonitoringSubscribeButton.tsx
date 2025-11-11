@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent } from 'react';
 import type { MonitoringChangeType, MonitoringScopeKey, MonitoringScopeType } from '../../types';
-import Modal from '../common/Modal';
 import { useToast } from '../common/ToastContainer';
 import { useCreateMonitoringSubscription } from '../../hooks/useMonitoringSubscriptions';
 
@@ -18,9 +17,7 @@ interface MonitoringSubscribeButtonProps {
   buttonSize?: 'sm' | 'md';
   disabled?: boolean;
   className?: string;
-  autoSubscribe?: boolean;
   defaultChangeType?: MonitoringChangeType;
-  defaultIntervalMinutes?: number;
   onSubscriptionSuccess?: (
     successes: Array<{
       target: SubscriptionTarget;
@@ -50,24 +47,16 @@ function getButtonClasses(variant: 'primary' | 'secondary' | 'ghost' | 'success'
 function MonitoringSubscribeButton({
   targets,
   label = 'Subscribe',
-  description,
+  description: _description,
   buttonVariant = 'primary',
   buttonSize = 'md',
   disabled,
   className,
-  autoSubscribe = false,
-  defaultChangeType,
-  defaultIntervalMinutes,
+  defaultChangeType = 'both',
   onSubscriptionSuccess,
 }: MonitoringSubscribeButtonProps) {
   const { showToast } = useToast();
   const createMutation = useCreateMonitoringSubscription();
-  const [isOpen, setIsOpen] = useState(false);
-  const effectiveDefaultChangeType = defaultChangeType ?? 'both';
-  const effectiveDefaultInterval = defaultIntervalMinutes ?? 60;
-  const [changeType, setChangeType] = useState<MonitoringChangeType>(effectiveDefaultChangeType);
-  const [intervalMinutesInput, setIntervalMinutesInput] = useState<string>(String(effectiveDefaultInterval));
-  const [errors, setErrors] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const uniqueTargets = useMemo(() => {
@@ -84,19 +73,7 @@ function MonitoringSubscribeButton({
 
   const effectiveDisabled = disabled || uniqueTargets.length === 0;
 
-  useEffect(() => {
-    if (!isOpen) {
-      setChangeType(effectiveDefaultChangeType);
-      setIntervalMinutesInput(String(effectiveDefaultInterval));
-    }
-  }, [effectiveDefaultChangeType, effectiveDefaultInterval, isOpen]);
-
-  const executeSubscriptions = async (
-    selectedChangeType: MonitoringChangeType,
-    intervalMinutes: number,
-    { closeOnSuccess }: { closeOnSuccess: boolean }
-  ) => {
-    setErrors(null);
+  const executeSubscriptions = async () => {
     setIsSubmitting(true);
     try {
       const results = await Promise.allSettled(
@@ -104,215 +81,77 @@ function MonitoringSubscribeButton({
           createMutation.mutateAsync({
             scopeType: target.scopeType,
             scope: target.scope,
-            changeType: selectedChangeType,
-            intervalMinutes,
+            changeType: defaultChangeType,
           })
         )
       );
 
-      const fulfilled = results.filter((result) => result.status === 'fulfilled');
-      const rejected = results.filter(
-        (result) => result.status === 'rejected'
-      ) as PromiseRejectedResult[];
-      const successDetails = results.reduce<Array<{ target: SubscriptionTarget; data: unknown }>>(
-        (acc, result, index) => {
-          if (result.status === 'fulfilled') {
-            acc.push({
-              target: uniqueTargets[index],
-              data: result.value,
-            });
-          }
-          return acc;
-        },
-        []
-      );
+      const successDetails: Array<{ target: SubscriptionTarget; data: unknown }> = [];
+      let fulfilledCount = 0;
+      const errors: string[] = [];
 
-      if (fulfilled.length > 0) {
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          fulfilledCount += 1;
+          successDetails.push({
+            target: uniqueTargets[index],
+            data: result.value,
+          });
+        } else {
+          const message = (result.reason as Error)?.message ?? 'Unknown error';
+          errors.push(message);
+        }
+      });
+
+      if (fulfilledCount > 0) {
         const successMessage =
-          fulfilled.length === 1
+          fulfilledCount === 1
             ? `Subscription created for ${uniqueTargets[0].label}`
-            : `${fulfilled.length} subscriptions created`;
+            : `${fulfilledCount} subscriptions created`;
         showToast('success', successMessage);
         if (successDetails.length > 0) {
           onSubscriptionSuccess?.(successDetails);
         }
       }
 
-      if (rejected.length > 0) {
-        const message = rejected
-          .map((item) => {
-            const error = item.reason as Error;
-            return error?.message || 'Unknown error';
-          })
-          .join('; ');
-        showToast(
-          'error',
-          `Failed to create ${rejected.length} subscription${rejected.length > 1 ? 's' : ''}: ${message}`
-        );
-      }
-
-      if (closeOnSuccess && rejected.length === 0) {
-        setIsOpen(false);
+      if (errors.length > 0) {
+        const errorMessage =
+          errors.length === 1
+            ? `Failed to create subscription: ${errors[0]}`
+            : `Failed to create ${errors.length} subscriptions: ${errors.join('; ')}`;
+        showToast('error', errorMessage);
       }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleAutoSubscribe = async () => {
-    if (effectiveDefaultInterval <= 0) {
-      showToast('error', 'Subscription interval must be a positive integer.');
-      return;
-    }
-
-    await executeSubscriptions(effectiveDefaultChangeType, effectiveDefaultInterval, {
-      closeOnSuccess: false,
-    });
-  };
-
-  const handleOpen = async (event: MouseEvent<HTMLButtonElement>) => {
+  const handleClick = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (effectiveDisabled) {
       return;
     }
-    if (autoSubscribe) {
-      await handleAutoSubscribe();
+    if (isSubmitting) {
       return;
     }
-    setErrors(null);
-    setIsOpen(true);
-  };
-
-  const handleClose = () => {
-    if (isSubmitting) return;
-    setIsOpen(false);
-    setErrors(null);
-  };
-
-  const handleSubmit = async () => {
-    const parsedInterval = Number(intervalMinutesInput);
-    if (!intervalMinutesInput || Number.isNaN(parsedInterval) || parsedInterval <= 0) {
-      setErrors('Interval must be a positive integer.');
-      return;
-    }
-
-    if (uniqueTargets.length === 0) {
-      setErrors('No targets selected for subscription.');
-      return;
-    }
-
-    await executeSubscriptions(changeType, parsedInterval, { closeOnSuccess: true });
+    await executeSubscriptions();
   };
 
   const buttonClasses = `${getButtonClasses(buttonVariant, buttonSize)} ${className || ''}`;
 
+  const buttonLabel = isSubmitting
+    ? 'Subscribing...'
+    : `${label}${uniqueTargets.length > 1 ? ` (${uniqueTargets.length})` : ''}`;
+
   return (
-    <>
-      <button
-        type="button"
-        className={buttonClasses.trim()}
-        onClick={handleOpen}
-        disabled={effectiveDisabled || isSubmitting}
-      >
-        {label}
-        {uniqueTargets.length > 1 ? ` (${uniqueTargets.length})` : ''}
-      </button>
-
-      <Modal isOpen={isOpen} onClose={handleClose} title="Create Monitoring Subscription" size="md">
-        <div className="space-y-6">
-          {description && <p className="text-sm text-gray-600">{description}</p>}
-
-          <div>
-            <h4 className="text-sm font-semibold text-gray-900 mb-2">Targets</h4>
-            <ul className="space-y-1 text-sm text-gray-700">
-              {uniqueTargets.map((target) => (
-                <li key={`${target.scopeType}-${JSON.stringify(target.scope)}`} className="flex items-center gap-2">
-                  <span className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 uppercase">
-                    {target.scopeType.replace(/_/g, ' ')}
-                  </span>
-                  <span>{target.label}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-semibold text-gray-900 mb-2">Change Type</h4>
-            <div className="flex gap-4 text-sm text-gray-700">
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="change-type"
-                  value="price_up"
-                  checked={changeType === 'price_up'}
-                  onChange={() => setChangeType('price_up')}
-                  className="form-radio text-primary-600 h-4 w-4"
-                />
-                Price goes up
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="change-type"
-                  value="price_down"
-                  checked={changeType === 'price_down'}
-                  onChange={() => setChangeType('price_down')}
-                  className="form-radio text-primary-600 h-4 w-4"
-                />
-                Price goes down
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="change-type"
-                  value="both"
-                  checked={changeType === 'both'}
-                  onChange={() => setChangeType('both')}
-                  className="form-radio text-primary-600 h-4 w-4"
-                />
-                Any change
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="interval-minutes" className="label">
-              Interval (minutes)
-            </label>
-            <input
-              id="interval-minutes"
-              type="number"
-              min={1}
-              value={intervalMinutesInput}
-              onChange={(event) => setIntervalMinutesInput(event.target.value)}
-              className="input-field w-full"
-            />
-            <p className="text-xs text-gray-500 mt-1">Subscriptions compare new data against the last change at or before this interval.</p>
-          </div>
-
-          {errors && <p className="text-sm text-red-600">{errors}</p>}
-
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="btn-secondary"
-              disabled={isSubmitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="btn-primary"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Creating...' : `Create ${uniqueTargets.length > 1 ? 'Subscriptions' : 'Subscription'}`}
-            </button>
-          </div>
-        </div>
-      </Modal>
-    </>
+    <button
+      type="button"
+      className={buttonClasses.trim()}
+      onClick={handleClick}
+      disabled={effectiveDisabled || isSubmitting}
+    >
+      {buttonLabel}
+    </button>
   );
 }
 

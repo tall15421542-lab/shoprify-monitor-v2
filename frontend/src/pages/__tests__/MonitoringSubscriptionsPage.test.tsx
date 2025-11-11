@@ -31,7 +31,6 @@ const baseSubscription: MonitoringSubscription = {
   scopeType: 'store',
   scope: { storeId: 'store-1' },
   changeType: 'both',
-  intervalMinutes: 60,
   unreadCount: 0,
   unreadUpdatedAt: null,
   unreadChangeLogs: [],
@@ -132,9 +131,6 @@ describe('MonitoringSubscriptionsPage', () => {
     fireEvent.change(screen.getByLabelText(/store id/i), {
       target: { value: 'store-1' },
     });
-    fireEvent.change(screen.getByLabelText(/interval \(minutes\)/i), {
-      target: { value: '45' },
-    });
 
     fireEvent.click(screen.getByRole('button', { name: /create subscription/i }));
 
@@ -144,7 +140,6 @@ describe('MonitoringSubscriptionsPage', () => {
           scopeType: 'store',
           scope: { storeId: 'store-1' },
           changeType: 'both',
-          intervalMinutes: 45,
         })
       );
     });

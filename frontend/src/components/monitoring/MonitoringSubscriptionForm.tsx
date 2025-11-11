@@ -7,7 +7,6 @@ export interface SubscriptionFormValues {
   productId: string;
   productType: string;
   changeType: MonitoringChangeType;
-  intervalMinutes: number;
 }
 
 export interface MonitoringSubscriptionFormProps {
@@ -28,7 +27,6 @@ const DEFAULT_VALUES: SubscriptionFormValues = {
   productId: '',
   productType: '',
   changeType: 'both',
-  intervalMinutes: 60,
 };
 
 function MonitoringSubscriptionForm({
@@ -44,9 +42,6 @@ function MonitoringSubscriptionForm({
 }: MonitoringSubscriptionFormProps) {
   const [values, setValues] = useState<SubscriptionFormValues>(
     initialValues ?? { ...DEFAULT_VALUES }
-  );
-  const [intervalInput, setIntervalInput] = useState<string>(
-    initialValues ? String(initialValues.intervalMinutes) : String(DEFAULT_VALUES.intervalMinutes)
   );
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -64,15 +59,6 @@ function MonitoringSubscriptionForm({
     (field: keyof SubscriptionFormValues) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const rawValue = event.target.value;
-
-      if (field === 'intervalMinutes') {
-        setIntervalInput(rawValue);
-        setValues((prev) => ({
-          ...prev,
-          intervalMinutes: rawValue === '' ? Number.NaN : Number(rawValue),
-        }));
-        return;
-      }
 
       const value = rawValue as SubscriptionFormValues[typeof field];
       setValues((prev) => ({
@@ -109,7 +95,6 @@ function MonitoringSubscriptionForm({
     }
 
     setValues({ ...initialValues });
-    setIntervalInput(String(initialValues.intervalMinutes));
   }, [initialValues]);
 
   useEffect(() => {
@@ -120,9 +105,6 @@ function MonitoringSubscriptionForm({
   }, [availableScopeTypes, values.scopeType, applyScopeType]);
 
   const validate = (): string | null => {
-    if (!values.intervalMinutes || values.intervalMinutes <= 0) {
-      return 'Interval minutes must be a positive number.';
-    }
     switch (values.scopeType) {
       case 'store':
         if (!values.storeId.trim()) {
@@ -226,23 +208,6 @@ function MonitoringSubscriptionForm({
           </select>
         </div>
 
-        <div>
-          <label className="label" htmlFor="interval-minutes-input">
-            Interval (minutes)
-          </label>
-          <input
-            id="interval-minutes-input"
-            type="number"
-            min={1}
-            className="input-field w-full"
-            value={intervalInput}
-            onChange={handleChange('intervalMinutes')}
-            disabled={submitting}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Compare current values against the last change detected at or before this interval.
-          </p>
-        </div>
       </div>
       {mode === 'create' &&
         (values.scopeType === 'store' ||

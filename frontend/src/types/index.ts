@@ -153,7 +153,6 @@ export interface MonitoringSubscription {
   storeName?: string;
   productName?: string;
   changeType: MonitoringChangeType;
-  intervalMinutes: number;
   unreadCount: number;
   unreadUpdatedAt: Date | null;
   unreadChangeLogs: MonitoringChangeLogEntry[];
@@ -165,7 +164,6 @@ export interface CreateMonitoringSubscriptionInput {
   scopeType: MonitoringScopeType;
   scope: MonitoringScopeKey;
   changeType: MonitoringChangeType;
-  intervalMinutes: number;
 }
 
 export interface MonitoringChangeLogEntry {

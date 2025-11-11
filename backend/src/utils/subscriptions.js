@@ -15,12 +15,6 @@ export const SCOPE_TYPES = new Set([
 
 export const CHANGE_TYPES = new Set(['price_up', 'price_down', 'both']);
 
-function ensurePositiveInteger(value, field) {
-  if (!Number.isInteger(value) || value <= 0) {
-    badRequest(`${field} must be a positive integer`);
-  }
-}
-
 function ensureValidScopeType(scopeType) {
   if (!SCOPE_TYPES.has(scopeType)) {
     badRequest(`Invalid scope_type: ${scopeType}`);
@@ -103,18 +97,16 @@ export function validateCreatePayload(payload) {
     badRequest('Request body must be an object');
   }
 
-  const { scope_type, scope_key, change_type, interval_minutes } = payload;
+  const { scope_type, scope_key, change_type } = payload;
 
   ensureValidScopeType(scope_type);
   const normalizedChangeType = ensureValidChangeType(change_type);
-  ensurePositiveInteger(interval_minutes, 'interval_minutes');
 
   const normalized = normalizeScope(scope_type, scope_key);
 
   return {
     scope_type,
     change_type: normalizedChangeType,
-    interval_minutes,
     ...normalized
   };
 }
@@ -141,11 +133,6 @@ export function validateUpdatePayload(payload) {
     result.change_type = ensureValidChangeType(payload.change_type);
   }
 
-  if (payload.interval_minutes !== undefined) {
-    ensurePositiveInteger(payload.interval_minutes, 'interval_minutes');
-    result.interval_minutes = payload.interval_minutes;
-  }
-
   if (Object.keys(result).length === 0) {
     badRequest('No valid fields provided for update');
   }
@@ -163,7 +150,6 @@ export function normalizeSubscriptionDocument(doc) {
     scope_key: doc.scope_key,
     scope_hash: doc.scope_hash,
     change_type: doc.change_type,
-    interval_minutes: doc.interval_minutes,
     created_at: doc.created_at,
     updated_at: doc.updated_at,
     store_name: typeof doc.store_name === 'string' ? doc.store_name : null,

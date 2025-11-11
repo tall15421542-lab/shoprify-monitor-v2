@@ -15,7 +15,7 @@
 - Frontend: On the dashboard, add a subscribe action that captures current store and product-type selections and creates combinations for each selected pair.
 
 ## Schema
-- `subscriptions`: id (uuid), scope_type (enum), scope_key (json), change_type (enum: `price_up`, `price_down`, `both`), interval_minutes (int), created_at, updated_at.
+- `subscriptions`: id (uuid), scope_type (enum), scope_key (json), change_type (enum: `price_up`, `price_down`, `both`), created_at, updated_at.
 - `change_logs`: id (uuid), subscription_id (uuid fk), current_value (decimal), previous_value (decimal), detected_at, read_at, is_baseline (boolean).
 - `change_read_counters`: id (uuid), subscription_id (uuid fk), unread_count (int), updated_at.
 - Maintain indexes on `subscriptions.scope_type`, `subscriptions.scope_key`, and `change_logs.subscription_id`.

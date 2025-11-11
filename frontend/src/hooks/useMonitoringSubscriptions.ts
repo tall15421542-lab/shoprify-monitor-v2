@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   getMonitoringSubscriptions,
   createMonitoringSubscription,
@@ -7,10 +7,26 @@ import {
 } from '../services/api';
 import type {
   CreateMonitoringSubscriptionInput,
+  MonitoringScopeKey,
   MonitoringSubscription,
 } from '../types';
 
 const SUBSCRIPTIONS_QUERY_KEY = ['monitoring', 'subscriptions'];
+
+function invalidateMonitoringQueries(
+  queryClient: QueryClient,
+  scope?: MonitoringScopeKey
+) {
+  queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_QUERY_KEY });
+  queryClient.invalidateQueries({ queryKey: ['stores'] });
+  queryClient.invalidateQueries({ queryKey: ['product-types'] });
+
+  const storeId = scope?.storeId;
+  if (storeId) {
+    queryClient.invalidateQueries({ queryKey: ['stores', storeId] });
+    queryClient.invalidateQueries({ queryKey: ['product-types', 'store', storeId] });
+  }
+}
 
 export function useMonitoringSubscriptions() {
   return useQuery<MonitoringSubscription[]>({
@@ -27,8 +43,8 @@ export function useCreateMonitoringSubscription() {
   return useMutation({
     mutationFn: (input: CreateMonitoringSubscriptionInput) =>
       createMonitoringSubscription(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_QUERY_KEY });
+    onSuccess: (_created, variables) => {
+      invalidateMonitoringQueries(queryClient, variables.scope);
     },
   });
 }
@@ -56,7 +72,7 @@ export function useUpdateMonitoringSubscription() {
           );
         }
       );
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_QUERY_KEY });
+      invalidateMonitoringQueries(queryClient, updatedSubscription.scope);
     },
   });
 }
@@ -68,7 +84,7 @@ export function useDeleteMonitoringSubscription() {
     mutationFn: (subscriptionId: string) =>
       deleteMonitoringSubscription(subscriptionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: SUBSCRIPTIONS_QUERY_KEY });
+      invalidateMonitoringQueries(queryClient);
     },
   });
 }

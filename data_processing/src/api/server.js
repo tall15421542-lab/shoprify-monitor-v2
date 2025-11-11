@@ -1,12 +1,12 @@
 import express from 'express';
 import cors from 'cors';
-import triggerRouter from './routes.js';
+import triggerRouter, { createApiRouter } from './routes.js';
 
 /**
  * Create and configure Express application for trigger API
  * @returns {express.Application} Configured Express app
  */
-export function createTriggerApp() {
+export function createTriggerApp({ router, routeOverrides } = {}) {
   const app = express();
 
   // Middleware
@@ -26,7 +26,8 @@ export function createTriggerApp() {
   });
 
   // Register trigger routes
-  app.use('/', triggerRouter);
+  const resolvedRouter = router ?? (routeOverrides ? createApiRouter(routeOverrides) : triggerRouter);
+  app.use('/', resolvedRouter);
 
   // 404 handler
   app.use((req, res) => {

@@ -91,15 +91,13 @@ describe('Monitoring API', () => {
     const payload = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'both',
-      interval_minutes: 120
+      change_type: 'both'
     };
 
     const { status, data } = await createSubscription(payload);
     assert.strictEqual(status, 201);
     assert.ok(data.id);
     assert.strictEqual(data.scope_type, payload.scope_type);
-    assert.strictEqual(data.interval_minutes, payload.interval_minutes);
 
     const db = getDb();
     const changeLogs = await db.collection('change_logs').find({ subscription_id: new ObjectId(data.id) }).toArray();
@@ -116,8 +114,7 @@ describe('Monitoring API', () => {
     const payload = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'price_up',
-      interval_minutes: 60
+      change_type: 'price_up'
     };
 
     const first = await createSubscription(payload);
@@ -132,8 +129,7 @@ describe('Monitoring API', () => {
     const payload = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'price_down',
-      interval_minutes: 90
+      change_type: 'price_down'
     };
 
     await createSubscription(payload);
@@ -152,15 +148,13 @@ describe('Monitoring API', () => {
     const payloadA = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'price_down',
-      interval_minutes: 60
+      change_type: 'price_down'
     };
 
     const payloadB = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'price_up',
-      interval_minutes: 45
+      change_type: 'price_up'
     };
 
     const createdA = await createSubscription(payloadA);
@@ -251,12 +245,11 @@ describe('Monitoring API', () => {
     }
   });
 
-  it('updates subscription interval', async () => {
+  it('updates subscription change type', async () => {
     const payload = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'price_up',
-      interval_minutes: 30
+      change_type: 'price_up'
     };
 
     const created = await createSubscription(payload);
@@ -268,20 +261,19 @@ describe('Monitoring API', () => {
     const response = await fetch(`${baseUrl}/subscriptions/${created.data.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ interval_minutes: 45 })
+      body: JSON.stringify({ change_type: 'both' })
     });
     const data = await response.json();
 
     assert.strictEqual(response.status, 200);
-    assert.strictEqual(data.interval_minutes, 45);
+    assert.strictEqual(data.change_type, 'both');
   });
 
   it('deletes subscription and associated change logs', async () => {
     const payload = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'both',
-      interval_minutes: 45
+      change_type: 'both'
     };
 
     const created = await createSubscription(payload);
@@ -324,8 +316,7 @@ describe('Monitoring API', () => {
     const payload = {
       scope_type: 'product',
       scope_key: { store_id: storeId.toString(), product_id: 'prod-123' },
-      change_type: 'price_down',
-      interval_minutes: 60
+      change_type: 'price_down'
     };
 
     const created = await createSubscription(payload);

@@ -31,7 +31,7 @@ describe('MonitoringSubscribeButton', () => {
     expect(button).toBeDisabled();
   });
 
-  it('creates subscription with selected options', async () => {
+  it('creates subscription with default change type on click', async () => {
     mutateAsync.mockResolvedValue({});
 
     renderButton({
@@ -47,21 +47,37 @@ describe('MonitoringSubscribeButton', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /subscribe/i }));
 
-    expect(screen.getByLabelText(/any change/i)).toBeChecked();
-    const priceDownRadio = screen.getByLabelText(/price goes down/i);
-    fireEvent.click(priceDownRadio);
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        scopeType: 'store',
+        scope: { storeId: 'store-1' },
+        changeType: 'both',
+      });
+    });
+  });
 
-    const intervalInput = screen.getByLabelText(/interval \(minutes\)/i);
-    fireEvent.change(intervalInput, { target: { value: '90' } });
+  it('respects default change type prop', async () => {
+    mutateAsync.mockResolvedValue({});
 
-    fireEvent.click(screen.getByRole('button', { name: /create subscription/i }));
+    renderButton({
+      targets: [
+        {
+          scopeType: 'store',
+          scope: { storeId: 'store-1' },
+          label: 'Store 1',
+        },
+      ],
+      label: 'Subscribe',
+      defaultChangeType: 'price_down',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /subscribe/i }));
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
         scopeType: 'store',
         scope: { storeId: 'store-1' },
         changeType: 'price_down',
-        intervalMinutes: 90,
       });
     });
   });
@@ -86,7 +102,6 @@ describe('MonitoringSubscribeButton', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: /subscribe/i }));
-    fireEvent.click(screen.getByRole('button', { name: /create subscription/i }));
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledTimes(1);

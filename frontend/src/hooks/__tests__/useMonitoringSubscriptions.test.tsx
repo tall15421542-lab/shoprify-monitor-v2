@@ -42,10 +42,9 @@ describe('useMonitoringSubscriptions', () => {
         scopeType: 'store',
         scope: { storeId: 'store-1' },
         changeType: 'both',
-        intervalMinutes: 30,
         unreadCount: 2,
         unreadUpdatedAt: new Date('2024-01-01T00:10:00Z'),
-      unreadChangeLogs: [],
+        unreadChangeLogs: [],
         createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: new Date('2024-01-01T00:05:00Z'),
       },
@@ -73,8 +72,7 @@ describe('useMonitoringSubscriptions', () => {
     const input: CreateMonitoringSubscriptionInput = {
       scopeType: 'store',
       scope: { storeId: 'store-1' },
-      changeType: 'both',
-      intervalMinutes: 45,
+    changeType: 'both',
     };
 
     const created: MonitoringSubscription = {
@@ -82,7 +80,6 @@ describe('useMonitoringSubscriptions', () => {
       scopeType: 'store',
       scope: { storeId: 'store-1' },
       changeType: 'both',
-      intervalMinutes: 45,
       unreadCount: 0,
       unreadUpdatedAt: null,
       unreadChangeLogs: [],

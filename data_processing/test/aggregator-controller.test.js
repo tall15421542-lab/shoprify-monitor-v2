@@ -1,8 +1,31 @@
 import { describe, it, before, after, beforeEach, mock } from 'node:test';
 import assert from 'node:assert';
 import express from 'express';
-import triggerRouter from '../src/api/routes.js';
-import * as aggregatorService from '../src/services/aggregator.js';
+import { createAggregatorController } from '../src/api/aggregator-controller.js';
+import { createApiRouter } from '../src/api/routes.js';
+
+let aggregationReturnValues = {
+  store: 0,
+  tag: 0,
+  storeTag: 0,
+  productType: 0,
+  storeProductType: 0
+};
+
+const aggregatorMocks = {
+  aggregateStoreAverages: mock.fn(async () => aggregationReturnValues.store),
+  aggregateTagAverages: mock.fn(async () => aggregationReturnValues.tag),
+  aggregateStoreTagAverages: mock.fn(async () => aggregationReturnValues.storeTag),
+  aggregateProductTypeAverages: mock.fn(async () => aggregationReturnValues.productType),
+  aggregateStoreProductTypeAverages: mock.fn(async () => aggregationReturnValues.storeProductType)
+};
+
+const aggregatorController = createAggregatorController(aggregatorMocks);
+const { triggerAggregation, triggerCurrentHourAggregation } = aggregatorController;
+const triggerRouter = createApiRouter({
+  triggerAggregation,
+  triggerCurrentHourAggregation
+});
 
 describe('Aggregator Controller Tests', () => {
   let app;
@@ -10,34 +33,10 @@ describe('Aggregator Controller Tests', () => {
   const port = 3098; // Use unique port for testing
   let baseUrl;
 
-  let aggregationReturnValues = {
-    store: 0,
-    tag: 0,
-    storeTag: 0,
-    productType: 0,
-    storeProductType: 0
-  };
-
-  const aggregatorMocks = {
-    store: mock.method(aggregatorService, 'aggregateStoreAverages', async (windowStart, windowEnd) => {
-      return aggregationReturnValues.store;
-    }),
-    tag: mock.method(aggregatorService, 'aggregateTagAverages', async () => {
-      return aggregationReturnValues.tag;
-    }),
-    storeTag: mock.method(aggregatorService, 'aggregateStoreTagAverages', async () => {
-      return aggregationReturnValues.storeTag;
-    }),
-    productType: mock.method(aggregatorService, 'aggregateProductTypeAverages', async () => {
-      return aggregationReturnValues.productType;
-    }),
-    storeProductType: mock.method(aggregatorService, 'aggregateStoreProductTypeAverages', async () => {
-      return aggregationReturnValues.storeProductType;
-    })
-  };
-
-  function clearAggregatorMocks() {
-    Object.values(aggregatorMocks).forEach((mockFn) => mockFn.mock.reset());
+  function resetAggregatorMockCalls() {
+  Object.values(aggregatorMocks).forEach((mockFn) => {
+    mockFn.mock.resetCalls();
+  });
   }
 
   function setAggregationReturnValues(overrides = {}) {
@@ -52,6 +51,7 @@ describe('Aggregator Controller Tests', () => {
   }
 
   before(async () => {
+    resetAggregatorMockCalls();
     setAggregationReturnValues();
 
     app = express();
@@ -71,7 +71,7 @@ describe('Aggregator Controller Tests', () => {
   });
 
   beforeEach(() => {
-    clearAggregatorMocks();
+    resetAggregatorMockCalls();
     setAggregationReturnValues();
   });
 
@@ -95,11 +95,11 @@ describe('Aggregator Controller Tests', () => {
       assert.ok(typeof data.results.product_type_averages === 'number');
       assert.ok(typeof data.results.store_product_type_averages === 'number');
 
-      assert.strictEqual(aggregatorMocks.store.mock.calls.length, 1);
-      assert.strictEqual(aggregatorMocks.tag.mock.calls.length, 1);
-      assert.strictEqual(aggregatorMocks.storeTag.mock.calls.length, 1);
-      assert.strictEqual(aggregatorMocks.productType.mock.calls.length, 1);
-      assert.strictEqual(aggregatorMocks.storeProductType.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.aggregateStoreAverages.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.aggregateTagAverages.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.aggregateStoreTagAverages.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.aggregateProductTypeAverages.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.aggregateStoreProductTypeAverages.mock.calls.length, 1);
     });
 
     it('should return valid time window for current hour', async () => {
@@ -123,7 +123,7 @@ describe('Aggregator Controller Tests', () => {
       assert.strictEqual(windowStart.getMinutes(), 0);
       assert.strictEqual(windowStart.getSeconds(), 0);
 
-      const [capturedStart, capturedEnd] = aggregatorMocks.store.mock.calls[0].arguments;
+      const [capturedStart, capturedEnd] = aggregatorMocks.aggregateStoreAverages.mock.calls[0].arguments;
       assert.ok(capturedStart instanceof Date);
       assert.ok(capturedEnd instanceof Date);
       assert.strictEqual(capturedEnd - capturedStart, 60 * 60 * 1000);
@@ -172,7 +172,7 @@ describe('Aggregator Controller Tests', () => {
       assert.strictEqual(data.window.end, windowEnd.toISOString());
       assert.ok(data.results);
 
-      const [capturedStart, capturedEnd] = aggregatorMocks.store.mock.calls[0].arguments;
+      const [capturedStart, capturedEnd] = aggregatorMocks.aggregateStoreAverages.mock.calls[0].arguments;
       assert.strictEqual(capturedStart.toISOString(), windowStart.toISOString());
       assert.strictEqual(capturedEnd.toISOString(), windowEnd.toISOString());
     });
@@ -190,7 +190,7 @@ describe('Aggregator Controller Tests', () => {
 
       assert.strictEqual(response.status, 400);
       assert.ok(data.error.includes('Invalid windowStart'));
-      assert.strictEqual(aggregatorMocks.store.mock.calls.length, 0);
+      assert.strictEqual(aggregatorMocks.aggregateStoreAverages.mock.calls.length, 0);
     });
 
     it('should return 400 for invalid windowEnd format', async () => {
@@ -210,7 +210,7 @@ describe('Aggregator Controller Tests', () => {
 
       assert.strictEqual(response.status, 400);
       assert.ok(data.error.includes('Invalid windowEnd'));
-      assert.strictEqual(aggregatorMocks.store.mock.calls.length, 0);
+      assert.strictEqual(aggregatorMocks.aggregateStoreAverages.mock.calls.length, 0);
     });
 
     it('should use default windowEnd if not provided', async () => {
@@ -229,7 +229,7 @@ describe('Aggregator Controller Tests', () => {
 
       assert.strictEqual(response.status, 200);
       
-      const [capturedStart, capturedEnd] = aggregatorMocks.store.mock.calls[0].arguments;
+      const [capturedStart, capturedEnd] = aggregatorMocks.aggregateStoreAverages.mock.calls[0].arguments;
       assert.strictEqual(capturedStart.toISOString(), windowStart.toISOString());
       assert.strictEqual(capturedEnd - capturedStart, 60 * 60 * 1000);
     });
@@ -250,7 +250,7 @@ describe('Aggregator Controller Tests', () => {
       assert.strictEqual(windowStart.getMinutes(), 0);
       assert.strictEqual(windowStart.getSeconds(), 0);
 
-      const [capturedStart] = aggregatorMocks.store.mock.calls[0].arguments;
+      const [capturedStart] = aggregatorMocks.aggregateStoreAverages.mock.calls[0].arguments;
       assert.strictEqual(capturedStart.getMinutes(), 0);
       assert.strictEqual(capturedStart.getSeconds(), 0);
     });

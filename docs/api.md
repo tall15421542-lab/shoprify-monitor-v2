@@ -92,13 +92,13 @@
 
 ## Monitoring
 - `POST /api/subscriptions`  
-  Body: `{ scope_type, scope_key, change_type, interval_minutes }`.  
+  Body: `{ scope_type, scope_key, change_type }`.  
   Creates a subscription and records a baseline change log row.  
   Scope types include `product`, `store`, `product_type`, and `store_product_type`.
 - `GET /api/subscriptions`  
   Returns `{ count, subscriptions }` with unread counters and up to ten unread change logs per subscription.
 - `PATCH /api/subscriptions/{id}`  
-  Updates scope, change type, or interval.  
+  Updates scope or change type.  
   Requires both `scope_type` and `scope_key` when changing the scope.
 - `DELETE /api/subscriptions/{id}`  
   Removes the subscription and all related change logs.

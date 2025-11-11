@@ -8,21 +8,40 @@ import { getProductsCollection } from '../database/models.js';
 import { ObjectId } from 'mongodb';
 import { calculateAveragePrice, calculateChangeMetrics, computeScopeHash } from './monitoring-utils.js';
 
-const MS_PER_MINUTE = 60 * 1000;
-
 function round(value) {
   if (value === null || value === undefined) {
     return null;
   }
-  return Number(value.toFixed(2));
+  if (typeof value === 'number') {
+    return Number(value.toFixed(2));
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  if (typeof value.toNumber === 'function') {
+    const numeric = value.toNumber();
+    return Number(numeric.toFixed(2));
+  }
+  if (typeof value.valueOf === 'function') {
+    const numeric = value.valueOf();
+    if (typeof numeric === 'number') {
+      return Number(numeric.toFixed(2));
+    }
+  }
+  if (typeof value.toString === 'function') {
+    const parsed = Number(value.toString());
+    if (!Number.isNaN(parsed)) {
+      return Number(parsed.toFixed(2));
+    }
+  }
+  return null;
 }
 
-async function findEligibleComparisonLog(subscriptionId, thresholdDate) {
+async function findLatestComparisonLog(subscriptionId) {
   const changeLogs = getChangeLogsCollection();
   return changeLogs.findOne(
     {
-      subscription_id: subscriptionId,
-      detected_at: { $lte: thresholdDate }
+      subscription_id: subscriptionId
     },
     {
       sort: { detected_at: -1 }
@@ -87,8 +106,7 @@ export async function evaluateSubscriptionChange(subscription, currentValue, det
 
   await ensureMonitoringIndexes();
 
-  const thresholdDate = new Date(detectedAt.getTime() - subscription.interval_minutes * MS_PER_MINUTE);
-  const comparisonLog = await findEligibleComparisonLog(subscription._id, thresholdDate);
+  const comparisonLog = await findLatestComparisonLog(subscription._id);
 
   if (!comparisonLog) {
     return false;
@@ -219,7 +237,7 @@ export async function evaluateAggregatedSubscriptions(scopeType, records, detect
       continue;
     }
 
-    const currentValue = typeof record.avg_price === 'number' ? Number(record.avg_price.toFixed(2)) : null;
+    const currentValue = round(record.avg_price);
     if (currentValue === null) {
       continue;
     }

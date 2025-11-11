@@ -1,8 +1,6 @@
-import { describe, it, beforeEach, afterEach, mock } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock, test } from 'node:test';
 import assert from 'node:assert';
-import * as connection from '../src/database/connection.js';
 import * as aggregatorService from '../src/services/aggregator.js';
-import * as monitoringService from '../src/services/monitoring.js';
 
 function createWriteCollection() {
   const state = { ops: [] };
@@ -76,7 +74,7 @@ function setupMockDb({
     hourly_store_product_type_avg: hourlyStoreProductTypeAvg
   };
 
-  mock.method(connection, 'getDb', () => ({
+  aggregatorService.setDatabaseAccessor(() => ({
     collection(name) {
       const collection = collections[name];
       if (!collection) {
@@ -100,10 +98,13 @@ describe('Aggregator service', () => {
 
   beforeEach(() => {
     mock.restoreAll();
-    evaluateMock = mock.method(monitoringService, 'evaluateAggregatedSubscriptions', async () => {});
+    evaluateMock = mock.fn(async () => {});
+    aggregatorService.setEvaluateAggregatedSubscriptionsImplementation(evaluateMock);
   });
 
   afterEach(() => {
+    aggregatorService.resetEvaluateAggregatedSubscriptionsImplementation();
+  aggregatorService.resetDatabaseAccessor();
     mock.restoreAll();
   });
 
@@ -242,8 +243,6 @@ describe('Aggregator service', () => {
   });
 });
 
-import { test } from 'node:test';
-import assert from 'node:assert';
 import { ObjectId } from 'mongodb';
 import { connect, close, getDb } from '../src/database/connection.js';
 import { initializeIndexes } from '../src/database/models.js';

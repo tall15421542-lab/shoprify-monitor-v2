@@ -2,25 +2,39 @@ import express from 'express';
 import { triggerStorePoll, triggerAllStoresPoll } from './poller-controller.js';
 import { triggerAggregation, triggerCurrentHourAggregation } from './aggregator-controller.js';
 
-const router = express.Router();
+const defaultHandlers = {
+  triggerStorePoll,
+  triggerAllStoresPoll,
+  triggerAggregation,
+  triggerCurrentHourAggregation
+};
 
-/**
- * Polling routes
- */
-// Trigger polling for a specific store
-router.post('/poll/store/:storeId', triggerStorePoll);
+export function createApiRouter(overrides = {}) {
+  const router = express.Router();
+  const handlers = { ...defaultHandlers, ...overrides };
 
-// Trigger polling for all active stores
-router.post('/poll/all', triggerAllStoresPoll);
+  /**
+   * Polling routes
+   */
+  // Trigger polling for a specific store
+  router.post('/poll/store/:storeId', handlers.triggerStorePoll);
 
-/**
- * Aggregation routes
- */
-// Trigger aggregation for a specific time window
-router.post('/aggregate', triggerAggregation);
+  // Trigger polling for all active stores
+  router.post('/poll/all', handlers.triggerAllStoresPoll);
 
-// Trigger aggregation for current hour
-router.post('/aggregate/current', triggerCurrentHourAggregation);
+  /**
+   * Aggregation routes
+   */
+  // Trigger aggregation for a specific time window
+  router.post('/aggregate', handlers.triggerAggregation);
 
-export default router;
+  // Trigger aggregation for current hour
+  router.post('/aggregate/current', handlers.triggerCurrentHourAggregation);
+
+  return router;
+}
+
+const defaultRouter = createApiRouter();
+
+export default defaultRouter;
 

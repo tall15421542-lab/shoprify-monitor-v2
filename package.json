@@ -21,6 +21,7 @@
     "backend:test:changelogs": "node --test backend/test/api/changelogs.test.js",
     "backend:test:tags": "node --test backend/test/api/tags.test.js",
     "backend:test:integration": "node --test backend/test/integration/api-flow.test.js",
+    "backend:test:all": "npm run backend:test:server && npm run backend:test:stores && npm run backend:test:products && npm run backend:test:price-history && npm run backend:test:analytics && npm run backend:test:changelogs && npm run backend:test:tags && npm run backend:test:integration",
     "mock:data": "node cli/mock-data-cli.js"
   },
   "keywords": [

@@ -89,6 +89,9 @@ npm run backend:test:changelogs
 
 # Run integration test
 npm run backend:test:integration
+
+# Run all backend tests sequentially
+npm run backend:test:all
 ```
 
 **Note:** Individual test files should be run separately to avoid database conflicts.

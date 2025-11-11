@@ -26,7 +26,7 @@
 
 ### subscriptions
 - Stores monitoring subscriptions for scope types: `product`, `store`, `product_type`, `store_product_type`.
-- Key fields: `scope_type`, `scope_key`, `scope_hash`, `change_type`, `interval_minutes`, `created_at`, `updated_at`.
+- Key fields: `scope_type`, `scope_key`, `scope_hash`, `change_type`, `created_at`, `updated_at`.
 - Indexes: compound index on `{ scope_type: 1 }` and unique index on `{ scope_hash: 1 }`.
 
 ### change_logs

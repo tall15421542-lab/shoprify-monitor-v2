@@ -94,7 +94,6 @@ function mapMonitoringSubscription(raw: any): MonitoringSubscription {
     storeName: typeof raw.store_name === 'string' ? raw.store_name : undefined,
     productName: typeof raw.product_name === 'string' ? raw.product_name : undefined,
     changeType: raw.change_type,
-    intervalMinutes: raw.interval_minutes,
     unreadCount: raw.unread_count ?? 0,
     unreadUpdatedAt: raw.unread_updated_at ? new Date(raw.unread_updated_at) : null,
     unreadChangeLogs: Array.isArray(raw.unread_change_logs)
@@ -835,7 +834,6 @@ export const createMonitoringSubscription = async (
     scope_type: input.scopeType,
     scope_key: toScopeKeyPayload(input.scopeType, input.scope),
     change_type: input.changeType,
-    interval_minutes: input.intervalMinutes,
   };
   const response = await api.post('/api/subscriptions', payload);
   return mapMonitoringSubscription(response.data);
@@ -849,7 +847,6 @@ export const updateMonitoringSubscription = async (
     scope_type: input.scopeType,
     scope_key: toScopeKeyPayload(input.scopeType, input.scope),
     change_type: input.changeType,
-    interval_minutes: input.intervalMinutes,
   };
   const response = await api.patch(`/api/subscriptions/${subscriptionId}`, payload);
   return mapMonitoringSubscription(response.data);

@@ -189,7 +189,6 @@ describe('Products Endpoints', () => {
           scope_key: { store_id: storeIdString },
           scope_hash: `store:${storeIdString}`,
           change_type: 'both',
-          interval_minutes: 60,
           created_at: new Date(),
           updated_at: new Date()
         },
@@ -198,7 +197,6 @@ describe('Products Endpoints', () => {
           scope_key: { store_id: storeIdString, product_id: productWithTypeId.toString() },
           scope_hash: `product:${storeIdString}:${productWithTypeId.toString()}`,
           change_type: 'price_up',
-          interval_minutes: 30,
           created_at: new Date(),
           updated_at: new Date()
         },
@@ -207,7 +205,6 @@ describe('Products Endpoints', () => {
           scope_key: { product_type: 'Tracked Type' },
           scope_hash: 'product_type:Tracked Type',
           change_type: 'both',
-          interval_minutes: 45,
           created_at: new Date(),
           updated_at: new Date()
         },
@@ -216,7 +213,6 @@ describe('Products Endpoints', () => {
           scope_key: { store_id: storeIdString, product_type: 'Tracked Type' },
           scope_hash: `store_product_type:${storeIdString}:Tracked Type`,
           change_type: 'both',
-          interval_minutes: 45,
           created_at: new Date(),
           updated_at: new Date()
         }
@@ -332,7 +328,6 @@ describe('Products Endpoints', () => {
           scope_key: { store_id: storeIdString },
           scope_hash: `store:${storeIdString}`,
           change_type: 'both',
-          interval_minutes: 60,
           created_at: new Date(),
           updated_at: new Date()
         },
@@ -341,7 +336,6 @@ describe('Products Endpoints', () => {
           scope_key: { store_id: storeIdString, product_id: productId.toString() },
           scope_hash: `product:${storeIdString}:${productId.toString()}`,
           change_type: 'both',
-          interval_minutes: 60,
           created_at: new Date(),
           updated_at: new Date()
         },
@@ -350,7 +344,6 @@ describe('Products Endpoints', () => {
           scope_key: { product_type: 'Watched Type' },
           scope_hash: 'product_type:Watched Type',
           change_type: 'price_down',
-          interval_minutes: 120,
           created_at: new Date(),
           updated_at: new Date()
         }

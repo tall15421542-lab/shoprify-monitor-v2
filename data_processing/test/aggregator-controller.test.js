@@ -1,11 +1,8 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach, mock } from 'node:test';
 import assert from 'node:assert';
 import express from 'express';
-import { connect, close, getDb } from '../src/database/connection.js';
-import { initializeIndexes } from '../src/database/models.js';
-import { createPriceSnapshotsCollection, dropPriceSnapshotsCollection } from '../src/database/analytics-schema.js';
 import triggerRouter from '../src/api/routes.js';
-import { ObjectId } from 'mongodb';
+import * as aggregatorService from '../src/services/aggregator.js';
 
 describe('Aggregator Controller Tests', () => {
   let app;
@@ -13,41 +10,69 @@ describe('Aggregator Controller Tests', () => {
   const port = 3098; // Use unique port for testing
   let baseUrl;
 
+  let aggregationReturnValues = {
+    store: 0,
+    tag: 0,
+    storeTag: 0,
+    productType: 0,
+    storeProductType: 0
+  };
+
+  const aggregatorMocks = {
+    store: mock.method(aggregatorService, 'aggregateStoreAverages', async (windowStart, windowEnd) => {
+      return aggregationReturnValues.store;
+    }),
+    tag: mock.method(aggregatorService, 'aggregateTagAverages', async () => {
+      return aggregationReturnValues.tag;
+    }),
+    storeTag: mock.method(aggregatorService, 'aggregateStoreTagAverages', async () => {
+      return aggregationReturnValues.storeTag;
+    }),
+    productType: mock.method(aggregatorService, 'aggregateProductTypeAverages', async () => {
+      return aggregationReturnValues.productType;
+    }),
+    storeProductType: mock.method(aggregatorService, 'aggregateStoreProductTypeAverages', async () => {
+      return aggregationReturnValues.storeProductType;
+    })
+  };
+
+  function clearAggregatorMocks() {
+    Object.values(aggregatorMocks).forEach((mockFn) => mockFn.mock.reset());
+  }
+
+  function setAggregationReturnValues(overrides = {}) {
+    aggregationReturnValues = {
+      store: 0,
+      tag: 0,
+      storeTag: 0,
+      productType: 0,
+      storeProductType: 0,
+      ...overrides
+    };
+  }
+
   before(async () => {
-    // Connect to test database
-    await connect('mongodb://localhost:27017', 'shopify_monitor_test');
-    await initializeIndexes();
-    
-    // Ensure analytics collections exist
-    await dropPriceSnapshotsCollection();
-    await createPriceSnapshotsCollection();
-    
-    // Create Express app with trigger routes
+    setAggregationReturnValues();
+
     app = express();
     app.use(express.json());
     app.use('/api', triggerRouter);
-    
+
     server = app.listen(port);
     baseUrl = `http://localhost:${port}`;
-    
+
     // Wait for server to be ready
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve));
-    await close();
+    mock.restoreAll();
   });
 
-  beforeEach(async () => {
-    // Clean up test data before each test
-    const db = getDb();
-    await db.collection('price_snapshots').deleteMany({});
-    await db.collection('hourly_store_avg').deleteMany({});
-    await db.collection('hourly_tag_avg').deleteMany({});
-    await db.collection('hourly_store_tag_avg').deleteMany({});
-    await db.collection('hourly_product_type_avg').deleteMany({});
-    await db.collection('hourly_store_product_type_avg').deleteMany({});
+  beforeEach(() => {
+    clearAggregatorMocks();
+    setAggregationReturnValues();
   });
 
   describe('POST /api/aggregate/current', () => {
@@ -69,6 +94,12 @@ describe('Aggregator Controller Tests', () => {
       assert.ok(typeof data.results.store_tag_averages === 'number');
       assert.ok(typeof data.results.product_type_averages === 'number');
       assert.ok(typeof data.results.store_product_type_averages === 'number');
+
+      assert.strictEqual(aggregatorMocks.store.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.tag.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.storeTag.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.productType.mock.calls.length, 1);
+      assert.strictEqual(aggregatorMocks.storeProductType.mock.calls.length, 1);
     });
 
     it('should return valid time window for current hour', async () => {
@@ -91,10 +122,16 @@ describe('Aggregator Controller Tests', () => {
       // Start should be at the beginning of an hour
       assert.strictEqual(windowStart.getMinutes(), 0);
       assert.strictEqual(windowStart.getSeconds(), 0);
+
+      const [capturedStart, capturedEnd] = aggregatorMocks.store.mock.calls[0].arguments;
+      assert.ok(capturedStart instanceof Date);
+      assert.ok(capturedEnd instanceof Date);
+      assert.strictEqual(capturedEnd - capturedStart, 60 * 60 * 1000);
+      assert.strictEqual(capturedStart.getMinutes(), 0);
+      assert.strictEqual(capturedStart.getSeconds(), 0);
     });
 
     it('should handle empty data gracefully', async () => {
-      // No price snapshots exist, so aggregation should return 0 for all
       const response = await fetch(`${baseUrl}/api/aggregate/current`, {
         method: 'POST'
       });
@@ -134,6 +171,10 @@ describe('Aggregator Controller Tests', () => {
       assert.strictEqual(data.window.start, windowStart.toISOString());
       assert.strictEqual(data.window.end, windowEnd.toISOString());
       assert.ok(data.results);
+
+      const [capturedStart, capturedEnd] = aggregatorMocks.store.mock.calls[0].arguments;
+      assert.strictEqual(capturedStart.toISOString(), windowStart.toISOString());
+      assert.strictEqual(capturedEnd.toISOString(), windowEnd.toISOString());
     });
 
     it('should return 400 for invalid windowStart format', async () => {
@@ -149,6 +190,7 @@ describe('Aggregator Controller Tests', () => {
 
       assert.strictEqual(response.status, 400);
       assert.ok(data.error.includes('Invalid windowStart'));
+      assert.strictEqual(aggregatorMocks.store.mock.calls.length, 0);
     });
 
     it('should return 400 for invalid windowEnd format', async () => {
@@ -168,6 +210,7 @@ describe('Aggregator Controller Tests', () => {
 
       assert.strictEqual(response.status, 400);
       assert.ok(data.error.includes('Invalid windowEnd'));
+      assert.strictEqual(aggregatorMocks.store.mock.calls.length, 0);
     });
 
     it('should use default windowEnd if not provided', async () => {
@@ -186,11 +229,9 @@ describe('Aggregator Controller Tests', () => {
 
       assert.strictEqual(response.status, 200);
       
-      // Verify windowEnd is 1 hour after windowStart
-      const start = new Date(data.window.start);
-      const end = new Date(data.window.end);
-      const diff = end - start;
-      assert.strictEqual(diff, 60 * 60 * 1000); // 1 hour
+      const [capturedStart, capturedEnd] = aggregatorMocks.store.mock.calls[0].arguments;
+      assert.strictEqual(capturedStart.toISOString(), windowStart.toISOString());
+      assert.strictEqual(capturedEnd - capturedStart, 60 * 60 * 1000);
     });
 
     it('should use default windowStart (current hour) if not provided', async () => {
@@ -208,67 +249,40 @@ describe('Aggregator Controller Tests', () => {
       const windowStart = new Date(data.window.start);
       assert.strictEqual(windowStart.getMinutes(), 0);
       assert.strictEqual(windowStart.getSeconds(), 0);
+
+      const [capturedStart] = aggregatorMocks.store.mock.calls[0].arguments;
+      assert.strictEqual(capturedStart.getMinutes(), 0);
+      assert.strictEqual(capturedStart.getSeconds(), 0);
     });
   });
 
-  describe('Aggregation with test data', () => {
-    it('should aggregate price snapshots correctly', async () => {
-      const db = getDb();
-      const storeId = new ObjectId();
-      const productId = 12345;
-      const variantId = 67890;
-      
-      // Insert test price snapshots
-      const windowStart = new Date();
-      windowStart.setHours(windowStart.getHours() - 1, 0, 0, 0);
-      
-      await db.collection('price_snapshots').insertMany([
-        {
-          timestamp: new Date(windowStart.getTime() + 10 * 60 * 1000), // 10 min after start
-          metadata: {
-            store_id: storeId,
-            product_id: productId,
-            variant_id: variantId,
-            tags: ['test-tag'],
-            product_type: 'Test Type'
-          },
-          store_name: 'Test Store',
-          price: 100.00
-        },
-        {
-          timestamp: new Date(windowStart.getTime() + 20 * 60 * 1000), // 20 min after start
-          metadata: {
-            store_id: storeId,
-            product_id: productId,
-            variant_id: variantId + 1,
-            tags: ['test-tag'],
-            product_type: 'Test Type'
-          },
-          store_name: 'Test Store',
-          price: 200.00
-        }
-      ]);
-
-      const windowEnd = new Date(windowStart);
-      windowEnd.setHours(windowEnd.getHours() + 1);
+  describe('Aggregation with stubbed results', () => {
+    it('should surface aggregation counts from services', async () => {
+      setAggregationReturnValues({
+        store: 1,
+        tag: 2,
+        storeTag: 3,
+        productType: 4,
+        storeProductType: 5
+      });
 
       const response = await fetch(`${baseUrl}/api/aggregate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          windowStart: windowStart.toISOString(),
-          windowEnd: windowEnd.toISOString()
+          windowStart: new Date().toISOString(),
+          windowEnd: new Date(Date.now() + 60 * 60 * 1000).toISOString()
         })
       });
 
       const data = await response.json();
 
       assert.strictEqual(response.status, 200);
-      assert.strictEqual(data.results.store_averages, 1); // 1 store
-      assert.strictEqual(data.results.tag_averages, 1); // 1 tag
-      assert.strictEqual(data.results.store_tag_averages, 1); // 1 store-tag combo
-      assert.strictEqual(data.results.product_type_averages, 1); // 1 product type
-      assert.strictEqual(data.results.store_product_type_averages, 1); // 1 store-product_type combo
+      assert.strictEqual(data.results.store_averages, 1);
+      assert.strictEqual(data.results.tag_averages, 2);
+      assert.strictEqual(data.results.store_tag_averages, 3);
+      assert.strictEqual(data.results.product_type_averages, 4);
+      assert.strictEqual(data.results.store_product_type_averages, 5);
     });
   });
 

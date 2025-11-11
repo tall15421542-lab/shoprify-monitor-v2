@@ -1,4 +1,4 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after, mock } from 'node:test';
 import assert from 'node:assert';
 
 // Set environment variable BEFORE importing modules
@@ -8,8 +8,10 @@ process.env.TRIGGER_API_URL = `http://localhost:${triggerPort}`;
 
 import { createApp as createBackendApp } from '../backend/src/api/server.js';
 import { createTriggerApp } from '../src/api/server.js';
-import { connect, close } from '../src/database/connection.js';
-import { initializeIndexes } from '../src/database/models.js';
+import * as connection from '../src/database/connection.js';
+import * as aggregatorService from '../src/services/aggregator.js';
+import * as pollerService from '../src/services/poller.js';
+import * as schedulerService from '../src/services/scheduler.js';
 
 /**
  * Test to verify REST communication between backend and src servers
@@ -22,9 +24,43 @@ describe('REST Communication Between Servers', () => {
   const backendUrl = `http://localhost:${backendPort}`;
 
   before(async () => {
-    // Connect to test database
-    await connect('mongodb://localhost:27017', 'shopify_monitor_test');
-    await initializeIndexes();
+    mock.restoreAll();
+
+    mock.method(connection, 'connect', async () => {});
+    mock.method(connection, 'close', async () => {});
+    mock.method(connection, 'getDb', () => {
+      throw new Error('getDb should not be called in mocked REST communication tests');
+    });
+
+    const aggregationResults = {
+      store: 1,
+      tag: 2,
+      storeTag: 3,
+      productType: 4,
+      storeProductType: 5
+    };
+
+    mock.method(aggregatorService, 'aggregateStoreAverages', async () => aggregationResults.store);
+    mock.method(aggregatorService, 'aggregateTagAverages', async () => aggregationResults.tag);
+    mock.method(aggregatorService, 'aggregateStoreTagAverages', async () => aggregationResults.storeTag);
+    mock.method(aggregatorService, 'aggregateProductTypeAverages', async () => aggregationResults.productType);
+    mock.method(aggregatorService, 'aggregateStoreProductTypeAverages', async () => aggregationResults.storeProductType);
+
+    mock.method(pollerService, 'pollAllStores', async () => ({
+      totalStores: 1,
+      successfulStores: 1,
+      failedStores: 0,
+      totalProducts: 42
+    }));
+
+    mock.method(schedulerService, 'runAggregations', async () => ({
+      success: true,
+      storeCount: aggregationResults.store,
+      tagCount: aggregationResults.tag,
+      storeTagCount: aggregationResults.storeTag,
+      productTypeCount: aggregationResults.productType,
+      storeProductTypeCount: aggregationResults.storeProductType
+    }));
 
     // Start trigger server (src)
     triggerApp = createTriggerApp();
@@ -43,7 +79,8 @@ describe('REST Communication Between Servers', () => {
   after(async () => {
     await new Promise((resolve) => triggerServer.close(resolve));
     await new Promise((resolve) => backendServer.close(resolve));
-    await close();
+    await connection.close();
+    mock.restoreAll();
     delete process.env.TRIGGER_API_URL;
   });
 

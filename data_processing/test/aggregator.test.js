@@ -1,3 +1,247 @@
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
+import assert from 'node:assert';
+import * as connection from '../src/database/connection.js';
+import * as aggregatorService from '../src/services/aggregator.js';
+import * as monitoringService from '../src/services/monitoring.js';
+
+function createWriteCollection() {
+  const state = { ops: [] };
+  return {
+    state,
+    async bulkWrite(operations) {
+      state.ops.push(...operations);
+    }
+  };
+}
+
+function detectAggregationType(pipeline) {
+  const groupStage = pipeline.find((stage) => stage.$group);
+  if (!groupStage) {
+    return 'store';
+  }
+
+  const groupId = groupStage.$group._id;
+  if (typeof groupId === 'string' && groupId.includes('tags')) {
+    return 'tag';
+  }
+  if (typeof groupId === 'string' && groupId.includes('product_type')) {
+    return 'productType';
+  }
+  if (groupId && groupId.store_id && groupId.product_type) {
+    return 'storeProductType';
+  }
+  if (groupId && groupId.store_id && groupId.tag) {
+    return 'storeTag';
+  }
+  return 'store';
+}
+
+function setupMockDb({
+  activeStores = [],
+  storeAggregationResults = [],
+  tagAggregationResults = [],
+  storeTagAggregationResults = [],
+  productTypeAggregationResults = [],
+  storeProductTypeAggregationResults = []
+} = {}) {
+  const hourlyStoreAvg = createWriteCollection();
+  const hourlyTagAvg = createWriteCollection();
+  const hourlyStoreTagAvg = createWriteCollection();
+  const hourlyProductTypeAvg = createWriteCollection();
+  const hourlyStoreProductTypeAvg = createWriteCollection();
+
+  const aggregationResultsMap = {
+    store: storeAggregationResults,
+    tag: tagAggregationResults,
+    storeTag: storeTagAggregationResults,
+    productType: productTypeAggregationResults,
+    storeProductType: storeProductTypeAggregationResults
+  };
+
+  const collections = {
+    stores: {
+      find: () => ({
+        toArray: async () => activeStores
+      })
+    },
+    price_snapshots: {
+      aggregate: (pipeline) => ({
+        toArray: async () => aggregationResultsMap[detectAggregationType(pipeline)] || []
+      })
+    },
+    hourly_store_avg: hourlyStoreAvg,
+    hourly_tag_avg: hourlyTagAvg,
+    hourly_store_tag_avg: hourlyStoreTagAvg,
+    hourly_product_type_avg: hourlyProductTypeAvg,
+    hourly_store_product_type_avg: hourlyStoreProductTypeAvg
+  };
+
+  mock.method(connection, 'getDb', () => ({
+    collection(name) {
+      const collection = collections[name];
+      if (!collection) {
+        throw new Error(`Unexpected collection: ${name}`);
+      }
+      return collection;
+    }
+  }));
+
+  return {
+    hourlyStoreAvg,
+    hourlyTagAvg,
+    hourlyStoreTagAvg,
+    hourlyProductTypeAvg,
+    hourlyStoreProductTypeAvg
+  };
+}
+
+describe('Aggregator service', () => {
+  let evaluateMock;
+
+  beforeEach(() => {
+    mock.restoreAll();
+    evaluateMock = mock.method(monitoringService, 'evaluateAggregatedSubscriptions', async () => {});
+  });
+
+  afterEach(() => {
+    mock.restoreAll();
+  });
+
+  it('aggregateStoreAverages returns 0 when there are no active stores', async () => {
+    setupMockDb({
+      activeStores: []
+    });
+
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    const count = await aggregatorService.aggregateStoreAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 0);
+    assert.strictEqual(evaluateMock.mock.calls.length, 0);
+  });
+
+  it('aggregateStoreAverages writes aggregated results and triggers subscription evaluation', async () => {
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+    const storeId = 'store-1';
+
+    const collections = setupMockDb({
+      activeStores: [{ _id: storeId }],
+      storeAggregationResults: [
+        {
+          store_id: storeId,
+          avg_price: 15,
+          product_count: 2,
+          window_start: windowStart
+        }
+      ]
+    });
+
+    const count = await aggregatorService.aggregateStoreAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 1);
+    assert.strictEqual(collections.hourlyStoreAvg.state.ops.length, 1);
+
+    const [operation] = collections.hourlyStoreAvg.state.ops;
+    assert.deepStrictEqual(operation.updateOne.filter, {
+      store_id: storeId,
+      window_start: windowStart
+    });
+    assert.deepStrictEqual(operation.updateOne.update.$set.avg_price, 15);
+    assert.deepStrictEqual(operation.updateOne.update.$set.window_end, windowEnd);
+    assert.strictEqual(operation.updateOne.upsert, true);
+
+    assert.strictEqual(evaluateMock.mock.calls.length, 1);
+    const [scopeType, records, detectedAt] = evaluateMock.mock.calls[0].arguments;
+    assert.strictEqual(scopeType, 'store');
+    assert.strictEqual(records.length, 1);
+    assert.strictEqual(detectedAt.toISOString(), windowEnd.toISOString());
+  });
+
+  it('aggregateTagAverages persists tag-level results', async () => {
+    const collections = setupMockDb({
+      activeStores: [{ _id: 'store-1' }],
+      tagAggregationResults: [
+        {
+          tag: 'electronics',
+          avg_price: 120,
+          product_count: 3,
+          window_start: new Date('2024-01-01T10:00:00Z')
+        },
+        {
+          tag: 'sale',
+          avg_price: 80,
+          product_count: 2,
+          window_start: new Date('2024-01-01T10:00:00Z')
+        }
+      ]
+    });
+
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    const count = await aggregatorService.aggregateTagAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 2);
+    assert.strictEqual(collections.hourlyTagAvg.state.ops.length, 2);
+    assert.strictEqual(evaluateMock.mock.calls.length, 0);
+  });
+
+  it('aggregateProductTypeAverages evaluates subscriptions for product types', async () => {
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    setupMockDb({
+      activeStores: [{ _id: 'store-1' }],
+      productTypeAggregationResults: [
+        {
+          product_type: 'Hoodie',
+          avg_price: 55,
+          product_count: 4,
+          store_count: 2,
+          window_start: windowStart
+        }
+      ]
+    });
+
+    const count = await aggregatorService.aggregateProductTypeAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 1);
+    assert.strictEqual(evaluateMock.mock.calls.length, 1);
+    const [scopeType, records] = evaluateMock.mock.calls[0].arguments;
+    assert.strictEqual(scopeType, 'product_type');
+    assert.strictEqual(records[0].product_type, 'Hoodie');
+  });
+
+  it('aggregateStoreProductTypeAverages evaluates subscriptions for store/product-type combinations', async () => {
+    const windowStart = new Date('2024-01-01T10:00:00Z');
+    const windowEnd = new Date('2024-01-01T11:00:00Z');
+
+    setupMockDb({
+      activeStores: [{ _id: 'store-42' }],
+      storeProductTypeAggregationResults: [
+        {
+          store_id: 'store-42',
+          product_type: 'Sneakers',
+          avg_price: 95,
+          product_count: 5,
+          window_start: windowStart
+        }
+      ]
+    });
+
+    const count = await aggregatorService.aggregateStoreProductTypeAverages(windowStart, windowEnd);
+
+    assert.strictEqual(count, 1);
+    assert.strictEqual(evaluateMock.mock.calls.length, 1);
+    const [scopeType, records] = evaluateMock.mock.calls[0].arguments;
+    assert.strictEqual(scopeType, 'store_product_type');
+    assert.strictEqual(records[0].product_type, 'Sneakers');
+    assert.strictEqual(records[0].store_id, 'store-42');
+  });
+});
+
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { ObjectId } from 'mongodb';

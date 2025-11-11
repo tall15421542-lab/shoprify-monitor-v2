@@ -5,7 +5,9 @@
       "Bash(mkdir:*)",
       "Bash(npm test:*)",
       "Bash(node --test:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

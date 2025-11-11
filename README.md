@@ -2,42 +2,79 @@
 
 Monitors Shopify storefronts and tracks product price movement.
 
-## Overview
-- Data service polls Shopify, normalizes products, and writes analytics snapshots.
-- Backend API reads MongoDB and exposes store, product, analytics, monitoring, and change log endpoints.
-- Frontend dashboard consumes the API to show monitoring views and subscription tools.
+## Architecture
+- **Data service** polls Shopify, normalizes products, writes analytics snapshots (port 3001).
+- **Backend API** reads MongoDB and exposes REST endpoints (port 3000).
+- **Frontend** dashboard shows monitoring views and subscription tools (port 5173).
 
-## Requirements
-- Node.js 18 or newer.
-- MongoDB 5 or newer accessible through `MONGODB_URI`.
+## Quick Start
 
-## Setup
-1. Run `npm install` in the repository root.
-2. Define `MONGODB_URI`, `MONGODB_DB_NAME`, and optional `TRIGGER_PORT`, `TRIGGER_API_URL`, or `PORT`.
-3. Seed the `stores` collection with active stores before polling.
+**Requirements:**
+- Node.js 18+
+- MongoDB 5+ (replica set enabled)
 
-## Run
-- `npm start` launches the data processing service and trigger API (default port 3001).
-- `npm run backend:start` starts the REST API (default port 3000).
-- `cd frontend && npm install && npm run dev` serves the dashboard (default port 5173).
-- `node cli/mock-data-cli.js --poll-url https://your-store.myshopify.com` seeds mock monitoring data when needed.
+**Setup:**
+```bash
+npm install
+export MONGODB_URI="mongodb://localhost:27017"
+export MONGODB_DB_NAME="shopify_monitor"
+```
 
-## Monitoring Subscriptions
-- Create subscriptions for stores, products, product types, or store plus product type pairs.
-- Choose a change direction (`price_up`, `price_down`, or `both`) and an alert interval in minutes.
-- The data service records price changes that meet the selected direction after the interval passes.
-- The backend aggregates unread change logs and exposes them through `/api/subscriptions` and `/api/change-logs`.
-- The frontend adds a Monitoring page with subscription CRUD flows and unread change badges.
-- Change logs include baseline rows when a subscription starts so users can compare the next change.
+**Run:**
+```bash
+# Terminal 1: Data service + trigger API (port 3001)
+npm start
 
-## MongoDB Tips
-- To restart the Dockerized MongoDB instance with empty collections, run:
-  - `docker stop shopify-mongo`
-  - `docker rm shopify-mongo`
-  - Remove the `/data/db` and `/data/configdb` volumes reported by `docker inspect` (for example `docker volume rm <volume-id> ...`)
-  - `docker run -d --name shopify-mongo -p 27017:27017 mongo:7 --replSet rs0`
-- After recreating the container, initialize the replica set so the backend can connect:
-  - `docker exec shopify-mongo mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }]})"`
+# Terminal 2: Backend API (port 3000)
+npm run backend:start
+
+# Terminal 3: Frontend dashboard (port 5173)
+cd frontend && npm install && npm run dev
+```
+
+**Seed data:**
+```bash
+node cli/mock-data-cli.js --poll-url https://your-store.myshopify.com
+```
+
+## Features
+
+**Monitoring Subscriptions:**
+- Subscribe to price changes for stores, products, product types, or combinations.
+- Filter by direction: `price_up`, `price_down`, or `both`.
+- View unread change logs with baseline comparisons.
+
+**Analytics:**
+- Hourly price averages per store, tag, product type.
+- Historical price tracking per product variant.
+- Change logs with percentage and absolute deltas.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MONGODB_URI` | required | MongoDB connection string |
+| `MONGODB_DB_NAME` | required | Database name |
+| `PORT` | 3000 | Backend API port |
+| `TRIGGER_PORT` | 3001 | Data service trigger API port |
+| `TRIGGER_API_URL` | `http://localhost:3001` | Trigger API base URL |
+
+## MongoDB Setup (Docker)
+
+**Start MongoDB with replica set:**
+```bash
+docker run -d --name shopify-mongo -p 27017:27017 mongo:7 --replSet rs0
+docker exec shopify-mongo mongosh --quiet --eval \
+  "rs.initiate({_id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }]})"
+```
+
+**Reset to empty state:**
+```bash
+docker stop shopify-mongo
+docker rm shopify-mongo
+docker volume rm $(docker volume ls -q | grep shopify-mongo)
+# Then run the start commands above
+```
 
 ## Tests
 - `npm test` covers the data processing service.

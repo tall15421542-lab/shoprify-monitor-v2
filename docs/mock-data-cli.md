@@ -9,6 +9,7 @@ node cli/mock-data-cli.js \
   --poll-url https://mous.co \
   --adjust-price-range 7.5 \
   --ratio-of-mock 0.25 \
+  --window-count 3 \
   --limit 250 \
   --page 1
 ```
@@ -38,6 +39,7 @@ npm run mock:data -- --poll-url https://mous.co
 - `--poll-url` (required, repeatable): Base Shopify store URL. The tool fetches product data from `{poll-url}/products.json`. Provide the flag multiple times or as a comma-separated list to process several stores in sequence.
 - `--adjust-price-range` (optional): Maximum absolute delta applied to selected variant prices. Defaults to `5`, representing ±5 currency units.
 - `--ratio-of-mock` (optional): Portion of products to adjust. Defaults to `0.2` (20%). Values above `1` are clamped to `1`, and non-positive values fall back to the default.
+- `--window-count` (optional): Number of consecutive hourly windows to populate in a single run. Defaults to `1`. Each window reuses freshly fetched products but advances the `window_start` by one hour.
 - `--limit` and `--page` (optional): Pagination options for fetching the product list. Defaults to `limit=250`, `page=1`.
 - `--mongo-uri` / `--db-name` (optional): Override the MongoDB connection (defaults match the rest of the project: `mongodb://localhost:27017`, `shopify_monitor`).
 - `--aggregate-url` (optional): Trigger endpoint for analytics aggregation. Defaults to `http://localhost:3001/aggregate/current`.
@@ -50,6 +52,8 @@ npm run mock:data -- --poll-url https://mous.co
 4. Upserts product documents into the `products` collection and inserts corresponding entries into `price_snapshots`.
 5. Invokes the trigger API aggregate endpoint to rebuild hourly metrics for the affected window.
 6. Queries the database to report the total products found for the store, snapshot counts for the new window, and a sample of updated variant prices.
+
+When `--window-count` is greater than `1`, the CLI repeats the full sequence for each additional hour, advancing the `window_start` by one hour per iteration while reusing the cached storefront response (no additional network fetches).
 
 The CLI is self-contained and does not import code from the backend, frontend, or data-processing packages.
 

@@ -66,7 +66,7 @@ describe('StoreCard', () => {
     expect(screen.getByText('Test Store')).toBeInTheDocument();
     expect(screen.getByText('test.myshopify.com')).toBeInTheDocument();
     expect(screen.getByText('50 products')).toBeInTheDocument();
-    expect(screen.getByText('Every 24 minutes')).toBeInTheDocument();
+    expect(screen.getByText('Every 24 hours')).toBeInTheDocument();
   });
 
   it('shows subscribe label when monitoring is not active', () => {

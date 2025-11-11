@@ -188,32 +188,36 @@ function ProductsPage() {
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">
-          {store?.name || 'Store'} Products
-        </h1>
+        <div className="flex flex-col gap-3">
+          <h1 className="text-3xl font-bold">
+            {store?.name || 'Store'} Products
+          </h1>
+        </div>
+
         {store && (
-          <div className="text-gray-600 space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
-            <div className="space-y-1">
-              <span>
-                {products?.length || 0} products • Updates every {pollingIntervalText}
-              </span>
-              {lastUpdatedText && (
-                <span className="block text-gray-500 sm:inline">
-                  Last updated {lastUpdatedText}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              <MonitoringSubscribeButton
-                targets={subscribeTargets}
-                label={subscribeButtonLabel}
-                buttonVariant={subscribeButtonVariant}
-                buttonSize="sm"
-                disabled={subscribeTargets.length === 0}
-                description={subscribeDescription}
-                onSubscriptionSuccess={handleSubscriptionSuccess}
-              />
-            </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+            <Package size={18} className="text-primary-600" />
+            <span className="font-medium text-gray-900">
+              {products?.length || 0} products
+            </span>
+            <span className="text-gray-400">·</span>
+            <span>Updates every {pollingIntervalText}</span>
+            <span className="text-gray-400">·</span>
+            <span>
+              {lastUpdatedText
+                ? `Last updated ${lastUpdatedText}`
+                : 'Last updated: Not yet updated'}
+            </span>
+            <MonitoringSubscribeButton
+              targets={subscribeTargets}
+              label={subscribeButtonLabel}
+              buttonVariant={subscribeButtonVariant}
+              buttonSize="sm"
+              disabled={subscribeTargets.length === 0}
+              description={subscribeDescription}
+              onSubscriptionSuccess={handleSubscriptionSuccess}
+              className="ml-2"
+            />
           </div>
         )}
       </div>
